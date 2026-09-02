@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,11 +14,18 @@ import (
 
 	"github.com/fow830/ratchet/pkg/antidrift"
 	"github.com/fow830/ratchet/pkg/fitness"
-	"github.com/fow830/ratchet/pkg/github"
+	gha "github.com/fow830/ratchet/pkg/github"
 	"github.com/fow830/ratchet/pkg/hooks"
 	"github.com/fow830/ratchet/pkg/report"
 	"github.com/fow830/ratchet/pkg/skills"
 	"github.com/fow830/ratchet/pkg/tokens"
+)
+
+// Set by goreleaser ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 const commandTimeout = 2 * time.Minute
@@ -32,10 +38,24 @@ type rootFlags struct {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	root := newRootCommand()
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		return exitCode(err)
+	}
+	return exitOK
+}
+
+func newRootCommand() *cobra.Command {
 	var rf rootFlags
 	root := &cobra.Command{
-		Use:   "ratchet",
-		Short: "Deterministic AI-native anti-drift framework for Go",
+		Use:     tokens.ToolName,
+		Short:   "Deterministic AI-native anti-drift framework for Go",
+		Version: version,
 		Long: `ratchet enforces Zero Architectural Regression (anti-drift) for Go repositories.
 
 Exit codes:
@@ -45,8 +65,9 @@ Exit codes:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&rf.config, "config", "", "path to ratchet.json (default: ./ratchet.json)")
-	root.PersistentFlags().BoolVar(&rf.jsonOut, "json", false, "emit machine-readable JSON on stdout where applicable")
+	root.SetVersionTemplate(fmt.Sprintf("%s {{.Version}} (commit=%s date=%s)\n", tokens.ToolName, commit, date))
+	root.PersistentFlags().StringVar(&rf.config, "config", "", "path to "+tokens.ConfigFileName+" (default: ./"+tokens.ConfigFileName+")")
+	root.PersistentFlags().BoolVar(&rf.jsonOut, "json", false, "alias for --format=json on check")
 	root.PersistentFlags().BoolVarP(&rf.verbose, "verbose", "v", false, "print diagnostic details to stderr")
 	root.PersistentFlags().BoolVar(&rf.dryRun, "dry-run", false, "show actions without writing files")
 
@@ -57,11 +78,7 @@ Exit codes:
 		newInitCICmd(&rf),
 		newInitHooksCmd(&rf),
 	)
-
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
-		os.Exit(exitCode(err))
-	}
+	return root
 }
 
 func newInitCmd(rf *rootFlags) *cobra.Command {
@@ -112,21 +129,23 @@ func newCheckCmd(rf *rootFlags) *cobra.Command {
 		Short: "Run AST fitness functions and anti-drift checks",
 		Long: `Analyze Go packages for illegal layer imports and verify locked contract hashes.
 
-Output:
-  --format=human (default)  human-readable lines on stderr
-  --format=llm              structured RULE_VIOLATION blocks for agents
-  --json                    JSON summary on stdout (violations + drift)
+Output formats (--format / -f):
+  text   ANSI-colored terminal output (default; alias: human)
+  json   structured JSON on stdout
+  sarif  SARIF 2.1.0 for GitHub Code Scanning
+  llm    dry RULE_VIOLATION blocks for agents
 
 Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := commandContext()
 			defer cancel()
 
-			format = strings.ToLower(strings.TrimSpace(format))
-			switch format {
-			case report.FormatHuman, report.FormatLLM:
-			default:
-				return systemErr(fmt.Errorf("unsupported --format %q (want human|llm)", format))
+			if rf.jsonOut {
+				format = report.FormatJSON
+			}
+			format, err := report.NormalizeFormat(format)
+			if err != nil {
+				return systemErr(err)
 			}
 
 			wd, err := os.Getwd()
@@ -138,15 +157,12 @@ Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
 				return systemErr(err)
 			}
 			if rf.verbose {
-				fmt.Fprintf(cmd.ErrOrStderr(), "config=%s module=%s\n", cfgPath, cfg.Module)
+				fmt.Fprintf(cmd.ErrOrStderr(), "config=%s module=%s format=%s\n", cfgPath, cfg.Module, format)
 			}
 
 			violations, err := fitness.NewAnalyzer(cfg).Analyze(ctx, wd)
 			if err != nil {
 				return systemErr(err)
-			}
-			if violations == nil {
-				violations = []fitness.Violation{}
 			}
 
 			eng := antidrift.New(wd)
@@ -155,51 +171,56 @@ Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
 			if err != nil {
 				return systemErr(err)
 			}
-			normalizeDiff(&diff)
 
-			failed := len(violations) > 0 || !diff.OK()
+			result := report.Result{
+				OK:         len(violations) == 0 && diff.OK(),
+				Violations: violations,
+				Drift:      diff,
+			}
+			result.Normalize()
 			errOut := cmd.ErrOrStderr()
 			out := cmd.OutOrStdout()
 
-			if rf.jsonOut {
-				payload := checkJSON{
-					OK:         !failed,
-					Violations: violations,
-					Drift:      diff,
-				}
-				enc := json.NewEncoder(out)
-				enc.SetIndent("", "  ")
-				if err := enc.Encode(payload); err != nil {
+			switch format {
+			case report.FormatJSON:
+				data, err := report.MarshalJSON(result)
+				if err != nil {
 					return systemErr(err)
 				}
-			} else {
-				for _, v := range violations {
-					if format == report.FormatLLM {
-						fmt.Fprintln(errOut, report.FormatLLMViolation(v))
-						fmt.Fprintln(errOut)
-						continue
-					}
-					fmt.Fprintln(errOut, report.FormatHumanViolation(v))
+				fmt.Fprintln(out, string(data))
+			case report.FormatSARIF:
+				data, err := report.MarshalSARIF(result)
+				if err != nil {
+					return systemErr(err)
 				}
-				if !diff.OK() {
-					if format == report.FormatLLM {
-						fmt.Fprintln(errOut, report.FormatLLMDiff(diff))
-					} else {
-						fmt.Fprint(errOut, report.FormatHumanDiff(diff))
-					}
+				fmt.Fprintln(out, string(data))
+			case report.FormatLLM:
+				for _, v := range result.Violations {
+					fmt.Fprintln(errOut, report.FormatLLMViolation(v))
+					fmt.Fprintln(errOut)
+				}
+				if !result.Drift.OK() {
+					fmt.Fprintln(errOut, report.FormatLLMDiff(result.Drift))
+				}
+			default: // text
+				for _, v := range result.Violations {
+					fmt.Fprintln(errOut, report.FormatTextViolation(v))
+				}
+				if !result.Drift.OK() {
+					fmt.Fprint(errOut, report.FormatTextDiff(result.Drift))
 				}
 			}
 
-			if failed {
+			if !result.OK {
 				return violationErr(fmt.Errorf("ratchet check failed"))
 			}
-			if !rf.jsonOut {
+			if format == report.FormatText || format == report.FormatLLM {
 				fmt.Fprintln(out, "ratchet check: ok")
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&format, "format", "f", report.FormatHuman, "output format: human|llm")
+	cmd.Flags().StringVarP(&format, "format", "f", report.FormatText, "output format: "+report.SupportedFormats)
 	return cmd
 }
 
@@ -252,7 +273,7 @@ func newInitCICmd(rf *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init-ci",
 		Short: "Generate GitHub Actions workflow for hard CI enforcement",
-		Long: `Write .github/workflows/ratchet.yml (go test + ratchet check --format=llm).
+		Long: `Write .github/workflows/ratchet.yml (go test/vet + ratchet check + goreleaser on tags).
 
 --protect-main attempts to enable required status checks via gh api.
 Private personal repos may require GitHub Pro for branch protection.`,
@@ -288,23 +309,17 @@ func enableProtectMain(cmd *cobra.Command, wd string) error {
 	if err != nil {
 		return err
 	}
-	ghPath, lookErr := exec.LookPath("gh")
-	argsAPI, body := gha.ProtectMainArgs(owner, repo)
+	client := gha.NewClient()
 	manual := gha.ProtectMainCommand(owner, repo)
-	if lookErr != nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "gh CLI not found; run:")
-		fmt.Fprintln(cmd.OutOrStdout(), manual)
-		return fmt.Errorf("protect-main: gh not installed")
-	}
-
 	var stderr bytes.Buffer
-	c := exec.Command(ghPath, argsAPI...)
-	c.Stdin = bytes.NewBufferString(body)
-	c.Stdout = cmd.OutOrStdout()
-	c.Stderr = &stderr
-	if err := c.Run(); err != nil {
+	if err := client.ProtectMain(owner, repo, cmd.OutOrStdout(), &stderr); err != nil {
 		msg := stderr.String()
 		fmt.Fprint(cmd.ErrOrStderr(), msg)
+		if strings.Contains(err.Error(), "gh not installed") {
+			fmt.Fprintln(cmd.OutOrStdout(), "gh CLI not found; run:")
+			fmt.Fprintln(cmd.OutOrStdout(), manual)
+			return err
+		}
 		if gha.IsProtectionUnavailable(msg) {
 			return fmt.Errorf("protect-main unavailable: private repos need GitHub Pro (or make the repo public); CI workflow is still the hard gate via exit code 1")
 		}
@@ -320,9 +335,9 @@ func newInitHooksCmd(rf *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "init-hooks",
 		Short: "Install local pre-commit hook (soft friction)",
-		Long: `Install .git/hooks/pre-commit that runs ratchet check --format=llm.
+		Long: fmt.Sprintf(`Install .git/hooks/pre-commit that runs %s check --format=%s.
 
-This is soft friction only; CI exit code 1 remains the hard constraint.`,
+This is soft friction only; CI exit code 1 remains the hard constraint.`, tokens.ToolName, report.FormatLLM),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			wd, err := os.Getwd()
 			if err != nil {
@@ -366,22 +381,4 @@ func resolveOwnerRepo(wd string) (string, string, error) {
 
 func commandContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), commandTimeout)
-}
-
-func normalizeDiff(d *antidrift.Diff) {
-	if d.Changed == nil {
-		d.Changed = []antidrift.ChangedFile{}
-	}
-	if d.Missing == nil {
-		d.Missing = []string{}
-	}
-	if d.Extra == nil {
-		d.Extra = []string{}
-	}
-}
-
-type checkJSON struct {
-	OK         bool                `json:"ok"`
-	Violations []fitness.Violation `json:"violations"`
-	Drift      antidrift.Diff      `json:"drift"`
 }

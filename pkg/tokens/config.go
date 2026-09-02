@@ -1,13 +1,25 @@
 // Package tokens holds the pure-Go SSOT configuration for ratchet.
 package tokens
 
-// On-disk artifact names (single place — no scattered string literals).
+// On-disk artifact names and published identity (single place — no scattered literals).
 const (
 	ConfigFileName = "ratchet.json"
 	LockFileName   = "ratchet.lock"
 	CursorRules    = ".cursorrules"
 	ClaudeSkillRel = ".claude/skills/ratchet.md"
+
+	// ModulePath must match go.mod.
+	ModulePath = "github.com/fow830/ratchet"
+	// ToolName is the CLI / SARIF driver name.
+	ToolName = "ratchet"
+	// BinaryRel is the default local build output path used by CI and hooks.
+	BinaryRel = "bin/" + ToolName
 )
+
+// ModuleHTTPSURL returns the canonical https:// URL for ModulePath.
+func ModuleHTTPSURL() string {
+	return "https://" + ModulePath
+}
 
 // Config is the root SSOT for a ratchet-managed repository.
 type Config struct {

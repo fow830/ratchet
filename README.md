@@ -32,7 +32,8 @@ go build -o bin/ratchet ./cmd/ratchet
 | Command | Purpose |
 |---------|---------|
 | `ratchet init` | Bootstrap `.cursorrules`, `ratchet.json`, Claude skill, lock file |
-| `ratchet check` | AST layer fitness + anti-drift (`-f human\|llm`, `--json`) |
+| `ratchet check` | AST layer fitness + anti-drift (`-f text\|json\|sarif\|llm`) |
+| `ratchet completion` | Generate bash/zsh/fish completion scripts |
 | `ratchet gen` | Regenerate agent rules and re-lock contracts |
 | `ratchet init-ci` | Write CI workflow; `--protect-main` enables required checks via `gh` |
 | `ratchet init-hooks` | Install local `pre-commit` soft friction |

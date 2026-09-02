@@ -2,38 +2,118 @@
 package gha
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/fow830/ratchet/pkg/report"
+	"github.com/fow830/ratchet/pkg/tokens"
 )
 
 // StatusCheckName is the GitHub Actions job name and required check context.
-const StatusCheckName = "ratchet"
+const StatusCheckName = tokens.ToolName
 
 // WorkflowRel is the generated workflow path relative to repo root.
-const WorkflowRel = ".github/workflows/ratchet.yml"
+const WorkflowRel = ".github/workflows/" + tokens.ToolName + ".yml"
+
+// CI pin tokens (single place for workflow template + tests).
+const (
+	GoreleaserAction = "goreleaser/goreleaser-action@v6"
+	GoreleaserPin    = "~> v2.12"
+	CheckoutAction   = "actions/checkout@v4"
+	SetupGoAction    = "actions/setup-go@v5"
+)
+
+// FileSystem abstracts disk writes for workflow generation tests.
+type FileSystem interface {
+	MkdirAll(path string, perm fs.FileMode) error
+	WriteFile(name string, data []byte, perm fs.FileMode) error
+}
+
+// OSFileSystem is the default real-disk implementation.
+type OSFileSystem struct{}
+
+func (OSFileSystem) MkdirAll(path string, perm fs.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+func (OSFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	return os.WriteFile(name, data, perm)
+}
+
+// Runner abstracts external process execution (e.g. gh api).
+type Runner interface {
+	LookPath(file string) (string, error)
+	Run(name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error
+}
+
+// ExecRunner uses os/exec.
+type ExecRunner struct{}
+
+func (ExecRunner) LookPath(file string) (string, error) { return exec.LookPath(file) }
+
+func (ExecRunner) Run(name string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	c := exec.Command(name, args...)
+	c.Stdin = stdin
+	c.Stdout = stdout
+	c.Stderr = stderr
+	return c.Run()
+}
+
+// Client bundles injectable FS and command runner.
+type Client struct {
+	FS     FileSystem
+	Runner Runner
+}
+
+// NewClient returns a Client with OS defaults.
+func NewClient() *Client {
+	return &Client{FS: OSFileSystem{}, Runner: ExecRunner{}}
+}
+
+func (c *Client) fs() FileSystem {
+	if c != nil && c.FS != nil {
+		return c.FS
+	}
+	return OSFileSystem{}
+}
+
+func (c *Client) runner() Runner {
+	if c != nil && c.Runner != nil {
+		return c.Runner
+	}
+	return ExecRunner{}
+}
 
 // WriteWorkflow writes .github/workflows/ratchet.yml under root.
 func WriteWorkflow(root string) (string, error) {
+	return NewClient().WriteWorkflow(root)
+}
+
+// WriteWorkflow writes the CI workflow file.
+func (c *Client) WriteWorkflow(root string) (string, error) {
 	path := filepath.Join(root, filepath.FromSlash(WorkflowRel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := c.fs().MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", fmt.Errorf("mkdir workflows: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(workflowYAML()), 0o644); err != nil {
+	if err := c.fs().WriteFile(path, []byte(WorkflowYAML()), 0o644); err != nil {
 		return "", fmt.Errorf("write workflow: %w", err)
 	}
 	return path, nil
 }
 
-func workflowYAML() string {
+// WorkflowYAML is the committed CI workflow template.
+func WorkflowYAML() string {
 	return fmt.Sprintf(`name: %s
 
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main]
 
@@ -42,21 +122,68 @@ jobs:
     name: %s
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: %s
 
-      - uses: actions/setup-go@v5
+      - uses: %s
         with:
           go-version-file: go.mod
 
       - name: Test
         run: go test ./...
 
-      - name: Build ratchet
-        run: go build -o bin/ratchet ./cmd/ratchet
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build %s
+        run: go build -o %s ./cmd/%s
 
       - name: Architecture check
-        run: ./bin/ratchet check --format=%s
-`, StatusCheckName, StatusCheckName, report.FormatLLM)
+        run: ./%s check --format=%s
+
+  release:
+    name: release
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: %s
+        with:
+          fetch-depth: 0
+
+      - uses: %s
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - uses: %s
+        with:
+          distribution: goreleaser
+          version: '%s'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+`, StatusCheckName, StatusCheckName, CheckoutAction, SetupGoAction,
+		tokens.ToolName, tokens.BinaryRel, tokens.ToolName,
+		tokens.BinaryRel, report.FormatLLM,
+		CheckoutAction, SetupGoAction, GoreleaserAction, GoreleaserPin)
+}
+
+// ProtectMain enables branch protection via gh api using the injectable runner.
+func (c *Client) ProtectMain(owner, repo string, stdout, stderr io.Writer) error {
+	r := c.runner()
+	ghPath, err := r.LookPath("gh")
+	if err != nil {
+		return fmt.Errorf("protect-main: gh not installed")
+	}
+	args, body := ProtectMainArgs(owner, repo)
+	return r.Run(ghPath, args, bytes.NewBufferString(body), stdout, stderr)
 }
 
 // ProtectionBody is the JSON body for PUT .../branches/main/protection.
