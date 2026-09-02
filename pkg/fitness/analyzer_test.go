@@ -49,6 +49,38 @@ func TestAnalyzer_TableDrivenEdges(t *testing.T) {
 	}
 }
 
+func TestAnalyzer_LayerOf_LongestSuffixWins(t *testing.T) {
+	// Regression: overlapping suffixes must resolve by longest match, not map-iteration order.
+	cfg := tokens.Config{
+		Module: "example.com/app",
+		Layers: map[string]string{
+			"/domain":                 "domain",
+			"/internal/domain/legacy": "legacy_domain",
+		},
+	}
+	a := fitness.NewAnalyzer(cfg)
+
+	tests := []struct {
+		path      string
+		wantLayer string
+		wantOK    bool
+	}{
+		{"example.com/app/internal/domain", "domain", true},
+		{"example.com/app/internal/domain/legacy", "legacy_domain", true},
+		{"example.com/app/internal/domain/legacy/pkg", "legacy_domain", true},
+		{"example.com/app/pkg/util", "", false},
+	}
+	// Repeat to catch non-determinism from map iteration.
+	for i := 0; i < 50; i++ {
+		for _, tc := range tests {
+			got, ok := a.LayerOf(tc.path)
+			if ok != tc.wantOK || got != tc.wantLayer {
+				t.Fatalf("iter %d LayerOf(%q)=(%q,%v) want (%q,%v)", i, tc.path, got, ok, tc.wantLayer, tc.wantOK)
+			}
+		}
+	}
+}
+
 func TestAnalyzer_TableDrivenLayerOf(t *testing.T) {
 	cfg := tokens.DefaultConfig("example.com/app")
 	cfg.Layers["/domain/sub"] = "domain_sub"

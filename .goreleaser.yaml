@@ -28,8 +28,7 @@ builds:
       - amd64
       - arm64
     ignore:
-      - goos: linux
-        goarch: arm64
+      # windows/arm64 still niche for this CLI; keep amd64-only on Windows.
       - goos: windows
         goarch: arm64
 
