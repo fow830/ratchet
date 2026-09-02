@@ -97,10 +97,10 @@ func WriteWorkflow(root string) (string, error) {
 // WriteWorkflow writes the CI workflow file.
 func (c *Client) WriteWorkflow(root string) (string, error) {
 	path := filepath.Join(root, filepath.FromSlash(WorkflowRel))
-	if err := c.fs().MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := c.fs().MkdirAll(filepath.Dir(path), tokens.FileModeDir); err != nil {
 		return "", fmt.Errorf("mkdir workflows: %w", err)
 	}
-	if err := c.fs().WriteFile(path, []byte(WorkflowYAML()), 0o644); err != nil {
+	if err := c.fs().WriteFile(path, []byte(WorkflowYAML()), tokens.FileModeFile); err != nil {
 		return "", fmt.Errorf("write workflow: %w", err)
 	}
 	return path, nil
@@ -135,7 +135,7 @@ jobs:
         run: go vet ./...
 
       - name: Build %s
-        run: go build -o %s ./cmd/%s
+        run: go build -o %s ./%s
 
       - name: Architecture check
         run: ./%s check --format=%s
@@ -170,7 +170,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 `, StatusCheckName, StatusCheckName, CheckoutAction, SetupGoAction,
-		tokens.ToolName, tokens.BinaryRel, tokens.ToolName,
+		tokens.ToolName, tokens.BinaryRel, tokens.CmdRel,
 		tokens.BinaryRel, report.FormatLLM,
 		CheckoutAction, SetupGoAction, GoreleaserAction, GoreleaserPin)
 }

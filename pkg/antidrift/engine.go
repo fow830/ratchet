@@ -110,13 +110,13 @@ func (e *Engine) Lock(ctx context.Context, relPaths []string) error {
 		}
 		files[rel] = sum
 	}
-	lf := LockFile{Version: 1, Files: files}
+	lf := LockFile{Version: tokens.LockVersion, Files: files}
 	data, err := json.MarshalIndent(lf, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal lock: %w", err)
 	}
 	data = append(data, '\n')
-	if err := e.fileSystem().WriteFile(e.LockFilePath(), data, 0o644); err != nil {
+	if err := e.fileSystem().WriteFile(e.LockFilePath(), data, tokens.FileModeFile); err != nil {
 		return fmt.Errorf("write lock: %w", err)
 	}
 	return nil

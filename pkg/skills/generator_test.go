@@ -17,19 +17,19 @@ func TestGenerator_WritesCursorRulesAndClaudeSkill(t *testing.T) {
 	if err := g.Generate(root); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	cursorRules, err := os.ReadFile(filepath.Join(root, ".cursorrules"))
+	cursorRules, err := os.ReadFile(filepath.Join(root, tokens.CursorRules))
 	if err != nil {
-		t.Fatalf("read .cursorrules: %v", err)
+		t.Fatalf("read %s: %v", tokens.CursorRules, err)
 	}
 	body := string(cursorRules)
 	if !strings.Contains(body, "Zero Architectural Regression") {
-		t.Fatalf(".cursorrules missing mission: %s", body)
+		t.Fatalf("%s missing mission: %s", tokens.CursorRules, body)
 	}
-	skill, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "ratchet.md"))
+	skill, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tokens.ClaudeSkillRel)))
 	if err != nil {
 		t.Fatalf("read claude skill: %v", err)
 	}
-	if !strings.Contains(string(skill), "ratchet check") {
+	if !strings.Contains(string(skill), tokens.ToolName+" check") {
 		t.Fatalf("skill missing check command: %s", skill)
 	}
 }
@@ -38,9 +38,9 @@ func TestGenerator_Deterministic(t *testing.T) {
 	cfg := tokens.DefaultConfig("example.com/app")
 	// Shuffle-prone map iteration must still yield identical output.
 	cfg.AllowedEdges = map[string][]string{
-		"delivery": {"domain", "usecase"},
-		"domain":   {},
-		"usecase":  {"domain"},
+		tokens.LayerDelivery: {tokens.LayerDomain, tokens.LayerUsecase},
+		tokens.LayerDomain:   {},
+		tokens.LayerUsecase:  {tokens.LayerDomain},
 	}
 	g := skills.NewGenerator(cfg)
 	a1, b1 := g.CursorRules(), g.ClaudeSkill()

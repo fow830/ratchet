@@ -13,10 +13,10 @@ import (
 func writePkg(t *testing.T, root, rel, src string) {
 	t.Helper()
 	dir := filepath.Join(root, rel)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, tokens.FileModeDir); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "doc.go"), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "doc.go"), []byte(src), tokens.FileModeFile); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 }
@@ -31,14 +31,14 @@ func TestAnalyzer_TableDrivenEdges(t *testing.T) {
 		from, to  string
 		wantAllow bool
 	}{
-		{"domain_self", "domain", "domain", true},
-		{"domain_to_usecase", "domain", "usecase", false},
-		{"domain_to_delivery", "domain", "delivery", false},
-		{"usecase_to_domain", "usecase", "domain", true},
-		{"usecase_to_delivery", "usecase", "delivery", false},
-		{"delivery_to_usecase", "delivery", "usecase", true},
-		{"delivery_to_domain", "delivery", "domain", true},
-		{"unknown_layer", "infra", "domain", false},
+		{"domain_self", tokens.LayerDomain, tokens.LayerDomain, true},
+		{"domain_to_usecase", tokens.LayerDomain, tokens.LayerUsecase, false},
+		{"domain_to_delivery", tokens.LayerDomain, tokens.LayerDelivery, false},
+		{"usecase_to_domain", tokens.LayerUsecase, tokens.LayerDomain, true},
+		{"usecase_to_delivery", tokens.LayerUsecase, tokens.LayerDelivery, false},
+		{"delivery_to_usecase", tokens.LayerDelivery, tokens.LayerUsecase, true},
+		{"delivery_to_domain", tokens.LayerDelivery, tokens.LayerDomain, true},
+		{"unknown_layer", "infra", tokens.LayerDomain, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

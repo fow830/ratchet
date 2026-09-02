@@ -52,22 +52,23 @@ func run() int {
 
 func newRootCommand() *cobra.Command {
 	var rf rootFlags
+	tool := tokens.ToolName
 	root := &cobra.Command{
-		Use:     tokens.ToolName,
+		Use:     tool,
 		Short:   "Deterministic AI-native anti-drift framework for Go",
 		Version: version,
-		Long: `ratchet enforces Zero Architectural Regression (anti-drift) for Go repositories.
+		Long: fmt.Sprintf(`%s enforces Zero Architectural Regression (anti-drift) for Go repositories.
 
 Exit codes:
   0  success — no architecture violations or drift
   1  violations — layer isolation or contract drift detected
-  2  error — invalid flags, I/O, parse, or other system failures`,
+  2  error — invalid flags, I/O, parse, or other system failures`, tool),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.SetVersionTemplate(fmt.Sprintf("%s {{.Version}} (commit=%s date=%s)\n", tokens.ToolName, commit, date))
+	root.SetVersionTemplate(fmt.Sprintf("%s {{.Version}} (commit=%s date=%s)\n", tool, commit, date))
 	root.PersistentFlags().StringVar(&rf.config, "config", "", "path to "+tokens.ConfigFileName+" (default: ./"+tokens.ConfigFileName+")")
-	root.PersistentFlags().BoolVar(&rf.jsonOut, "json", false, "alias for --format=json on check")
+	root.PersistentFlags().BoolVar(&rf.jsonOut, "json", false, "alias for --format="+report.FormatJSON+" on check")
 	root.PersistentFlags().BoolVarP(&rf.verbose, "verbose", "v", false, "print diagnostic details to stderr")
 	root.PersistentFlags().BoolVar(&rf.dryRun, "dry-run", false, "show actions without writing files")
 
@@ -81,14 +82,19 @@ Exit codes:
 	return root
 }
 
+func toolMsg(cmd, msg string) string {
+	return tokens.ToolName + " " + cmd + ": " + msg
+}
+
 func newInitCmd(rf *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Bootstrap .cursorrules, ratchet.json, Claude skill, and lock file",
-		Long: `Create default SSOT config and agent rule artifacts in the current module.
+		Short: fmt.Sprintf("Bootstrap %s, %s, Claude skill, and lock file", tokens.CursorRules, tokens.ConfigFileName),
+		Long: fmt.Sprintf(`Create default SSOT config and agent rule artifacts in the current module.
 
-Writes ratchet.json, .cursorrules, .claude/skills/ratchet.md, and ratchet.lock.
+Writes %s, %s, %s, and %s.
 Use --dry-run to preview without writing.`,
+			tokens.ConfigFileName, tokens.CursorRules, tokens.ClaudeSkillRel, tokens.LockFileName),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := commandContext()
 			defer cancel()
@@ -102,8 +108,10 @@ Use --dry-run to preview without writing.`,
 			}
 			cfg := tokens.DefaultConfig(module)
 			if rf.dryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "ratchet init (dry-run): would write %s, %s, %s, %s\n",
-					tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName)
+				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init (dry-run)", fmt.Sprintf(
+					"would write %s, %s, %s, %s",
+					tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName,
+				)))
 				return nil
 			}
 			if err := tokens.Save(ctx, wd, cfg); err != nil {
@@ -115,8 +123,10 @@ Use --dry-run to preview without writing.`,
 			if err := antidrift.New(wd).Lock(ctx, cfg.ContractFiles); err != nil {
 				return systemErr(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ratchet init: wrote %s, %s, %s, %s\n",
-				tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName)
+			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init", fmt.Sprintf(
+				"wrote %s, %s, %s, %s",
+				tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName,
+			)))
 			return nil
 		},
 	}
@@ -127,15 +137,16 @@ func newCheckCmd(rf *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Run AST fitness functions and anti-drift checks",
-		Long: `Analyze Go packages for illegal layer imports and verify locked contract hashes.
+		Long: fmt.Sprintf(`Analyze Go packages for illegal layer imports and verify locked contract hashes.
 
 Output formats (--format / -f):
-  text   ANSI-colored terminal output (default; alias: human)
-  json   structured JSON on stdout
-  sarif  SARIF 2.1.0 for GitHub Code Scanning
-  llm    dry RULE_VIOLATION blocks for agents
+  %s   ANSI-colored terminal output (default; alias: %s)
+  %s   structured JSON on stdout
+  %s  SARIF 2.1.0 for GitHub Code Scanning
+  %s    dry RULE_VIOLATION blocks for agents
 
 Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
+			report.FormatText, report.FormatHuman, report.FormatJSON, report.FormatSARIF, report.FormatLLM),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := commandContext()
 			defer cancel()
@@ -212,10 +223,10 @@ Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
 			}
 
 			if !result.OK {
-				return violationErr(fmt.Errorf("ratchet check failed"))
+				return violationErr(fmt.Errorf("%s check failed", tokens.ToolName))
 			}
 			if format == report.FormatText || format == report.FormatLLM {
-				fmt.Fprintln(out, "ratchet check: ok")
+				fmt.Fprintln(out, toolMsg("check", "ok"))
 			}
 			return nil
 		},
@@ -228,10 +239,11 @@ func newGenCmd(rf *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "gen",
 		Short: "Generate agent skill rules and re-lock contracts",
-		Long: `Regenerate .cursorrules / Claude skill from SSOT and refresh ratchet.lock.
+		Long: fmt.Sprintf(`Regenerate %s / Claude skill from SSOT and refresh %s.
 
-If ratchet.json is missing, creates a default config from go.mod first.
+If %s is missing, creates a default config from %s first.
 Use --dry-run to preview without writing.`,
+			tokens.CursorRules, tokens.LockFileName, tokens.ConfigFileName, tokens.GoModFileName),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := commandContext()
 			defer cancel()
@@ -253,7 +265,7 @@ Use --dry-run to preview without writing.`,
 				}
 			}
 			if rf.dryRun {
-				fmt.Fprintln(cmd.OutOrStdout(), "ratchet gen (dry-run): would regenerate contracts and lock file")
+				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("gen (dry-run)", "would regenerate contracts and lock file"))
 				return nil
 			}
 			if err := skills.NewGenerator(cfg).Generate(wd); err != nil {
@@ -262,7 +274,7 @@ Use --dry-run to preview without writing.`,
 			if err := antidrift.New(wd).Lock(ctx, cfg.ContractFiles); err != nil {
 				return systemErr(err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ratchet gen: regenerated contracts and lock file")
+			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("gen", "regenerated contracts and lock file"))
 			return nil
 		},
 	}
@@ -273,24 +285,25 @@ func newInitCICmd(rf *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init-ci",
 		Short: "Generate GitHub Actions workflow for hard CI enforcement",
-		Long: `Write .github/workflows/ratchet.yml (go test/vet + ratchet check + goreleaser on tags).
+		Long: fmt.Sprintf(`Write %s (go test/vet + %s check + goreleaser on tags).
 
 --protect-main attempts to enable required status checks via gh api.
 Private personal repos may require GitHub Pro for branch protection.`,
+			gha.WorkflowRel, tokens.ToolName),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			wd, err := os.Getwd()
 			if err != nil {
 				return systemErr(err)
 			}
 			if rf.dryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "ratchet init-ci (dry-run): would write %s\n", gha.WorkflowRel)
+				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-ci (dry-run)", "would write "+gha.WorkflowRel))
 				return nil
 			}
 			path, err := gha.WriteWorkflow(wd)
 			if err != nil {
 				return systemErr(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ratchet init-ci: wrote %s\n", path)
+			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-ci", "wrote "+path))
 			if !protectMain {
 				return nil
 			}
@@ -327,7 +340,9 @@ func enableProtectMain(cmd *cobra.Command, wd string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), manual)
 		return fmt.Errorf("protect-main: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "ratchet init-ci: required status check %q enabled on %s/%s main\n", gha.StatusCheckName, owner, repo)
+	fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-ci", fmt.Sprintf(
+		"required status check %q enabled on %s/%s main", gha.StatusCheckName, owner, repo,
+	)))
 	return nil
 }
 
@@ -335,23 +350,24 @@ func newInitHooksCmd(rf *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "init-hooks",
 		Short: "Install local pre-commit hook (soft friction)",
-		Long: fmt.Sprintf(`Install .git/hooks/pre-commit that runs %s check --format=%s.
+		Long: fmt.Sprintf(`Install %s that runs %s check --format=%s.
 
-This is soft friction only; CI exit code 1 remains the hard constraint.`, tokens.ToolName, report.FormatLLM),
+This is soft friction only; CI exit code 1 remains the hard constraint.`,
+			tokens.PreCommitRel, tokens.ToolName, report.FormatLLM),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			wd, err := os.Getwd()
 			if err != nil {
 				return systemErr(err)
 			}
 			if rf.dryRun {
-				fmt.Fprintln(cmd.OutOrStdout(), "ratchet init-hooks (dry-run): would install .git/hooks/pre-commit")
+				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-hooks (dry-run)", "would install "+tokens.PreCommitRel))
 				return nil
 			}
 			path, err := hooks.Install(wd)
 			if err != nil {
 				return systemErr(err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ratchet init-hooks: installed %s\n", path)
+			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-hooks", "installed "+path))
 			return nil
 		},
 	}

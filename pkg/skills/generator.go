@@ -23,15 +23,15 @@ func NewGenerator(cfg tokens.Config) *Generator {
 
 // Generate writes agent skill artifacts under root.
 func (g *Generator) Generate(root string) error {
-	if err := os.WriteFile(filepath.Join(root, tokens.CursorRules), []byte(g.CursorRules()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, tokens.CursorRules), []byte(g.CursorRules()), tokens.FileModeFile); err != nil {
 		return fmt.Errorf("write %s: %w", tokens.CursorRules, err)
 	}
 
 	skillPath := filepath.Join(root, filepath.FromSlash(tokens.ClaudeSkillRel))
-	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(skillPath), tokens.FileModeDir); err != nil {
 		return fmt.Errorf("mkdir skills: %w", err)
 	}
-	if err := os.WriteFile(skillPath, []byte(g.ClaudeSkill()), 0o644); err != nil {
+	if err := os.WriteFile(skillPath, []byte(g.ClaudeSkill()), tokens.FileModeFile); err != nil {
 		return fmt.Errorf("write %s: %w", tokens.ClaudeSkillRel, err)
 	}
 	return nil
@@ -56,7 +56,8 @@ func (g *Generator) CursorRules() string {
 		edges = append(edges, fmt.Sprintf("- %s → %s", from, strings.Join(tos, ", ")))
 	}
 
-	return fmt.Sprintf(`# ratchet — Zero Architectural Regression (Anti-Drift)
+	tool := tokens.ToolName
+	return fmt.Sprintf(`# %s — Zero Architectural Regression (Anti-Drift)
 
 Module: %s
 
@@ -71,28 +72,29 @@ Module: %s
 
 ## Agent Protocol
 - Prefer tests first; keep gofmt/go vet clean.
-- Run `+"`ratchet check`"+` before claiming architecture is green.
+- Run `+"`"+`%s check`+"`"+` before claiming architecture is green.
 - Do not manually edit locked contract files without regenerating and re-locking.
-`, escapeMarkdown(g.cfg.Module), strings.Join(edges, "\n"))
+`, tool, escapeMarkdown(g.cfg.Module), strings.Join(edges, "\n"), tool)
 }
 
 // ClaudeSkill returns the deterministic Claude skill markdown body.
 func (g *Generator) ClaudeSkill() string {
 	mod := escapeMarkdown(g.cfg.Module)
-	return fmt.Sprintf(`# ratchet skill
+	tool := tokens.ToolName
+	return fmt.Sprintf(`# %s skill
 
 Use this skill when changing architecture, contracts, or agent rules in module %s.
 
 ## Commands
-- `+"`ratchet init`"+` — bootstrap .cursorrules and ratchet.json
-- `+"`ratchet check`"+` — AST fitness + anti-drift verify
-- `+"`ratchet gen`"+` — regenerate agent skill rules and lock contracts
+- `+"`"+`%s init`+"`"+` — bootstrap %s and %s
+- `+"`"+`%s check`+"`"+` — AST fitness + anti-drift verify
+- `+"`"+`%s gen`+"`"+` — regenerate agent skill rules and lock contracts
 
 ## Rules
 - Keep Pure Go SSOT.
 - Never introduce Go .so plugins.
 - Enforce layer edges from tokens.Config.
-`, mod)
+`, tool, mod, tool, tokens.CursorRules, tokens.ConfigFileName, tool, tool)
 }
 
 // escapeMarkdown escapes backticks and angle brackets in untrusted context fragments.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fow830/ratchet/pkg/antidrift"
 	"github.com/fow830/ratchet/pkg/fitness"
+	"github.com/fow830/ratchet/pkg/tokens"
 )
 
 const (
@@ -22,7 +23,7 @@ const (
 )
 
 // SupportedFormats is the canonical help string for --format.
-const SupportedFormats = "text|json|sarif|llm"
+const SupportedFormats = FormatText + "|" + FormatJSON + "|" + FormatSARIF + "|" + FormatLLM
 
 const (
 	ansiReset  = "\033[0m"
@@ -128,7 +129,10 @@ func FormatLLMDiff(d antidrift.Diff) string {
 			RuleAntiDrift,
 			c.Path,
 			fmt.Sprintf("contract hash mismatch expected=%s actual=%s", c.Expected, c.Actual),
-			"Restore generated content or run `ratchet gen` then commit the updated ratchet.lock.",
+			fmt.Sprintf(
+				"Restore generated content or run `%s gen` then commit the updated %s.",
+				tokens.ToolName, tokens.LockFileName,
+			),
 		))
 	}
 	for _, m := range d.Missing {
@@ -136,15 +140,18 @@ func FormatLLMDiff(d antidrift.Diff) string {
 			RuleAntiDrift,
 			m,
 			"locked contract file is missing on disk",
-			"Restore the file or run `ratchet gen` to regenerate contracts and lock.",
+			fmt.Sprintf("Restore the file or run `%s gen` to regenerate contracts and lock.", tokens.ToolName),
 		))
 	}
 	for _, e := range d.Extra {
 		blocks = append(blocks, llmBlock(
 			RuleAntiDrift,
 			e,
-			"declared contract file exists on disk but is absent from ratchet.lock",
-			"Run `ratchet gen` to lock it, or remove it from ContractFiles in ratchet.json.",
+			fmt.Sprintf("declared contract file exists on disk but is absent from %s", tokens.LockFileName),
+			fmt.Sprintf(
+				"Run `%s gen` to lock it, or remove it from ContractFiles in %s.",
+				tokens.ToolName, tokens.ConfigFileName,
+			),
 		))
 	}
 	return strings.Join(blocks, "\n\n")

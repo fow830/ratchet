@@ -53,7 +53,7 @@ func TestCLI_MissingConfig(t *testing.T) {
 	root.SetArgs([]string{"check", "--format=json"})
 	err = root.Execute()
 	if err == nil {
-		t.Fatal("expected error without ratchet.json")
+		t.Fatalf("expected error without %s", tokens.ConfigFileName)
 	}
 	if exitCode(err) != exitSystem {
 		t.Fatalf("exit=%d want %d (%v)", exitCode(err), exitSystem, err)

@@ -8,6 +8,7 @@ import (
 	"github.com/fow830/ratchet/pkg/antidrift"
 	"github.com/fow830/ratchet/pkg/fitness"
 	"github.com/fow830/ratchet/pkg/report"
+	"github.com/fow830/ratchet/pkg/tokens"
 )
 
 func sampleResult() report.Result {
@@ -22,7 +23,7 @@ func sampleResult() report.Result {
 			ImportedLayer: "usecase",
 		}},
 		Drift: antidrift.Diff{
-			Changed: []antidrift.ChangedFile{{Path: "ratchet.json", Expected: "aaa", Actual: "bbb"}},
+			Changed: []antidrift.ChangedFile{{Path: tokens.ConfigFileName, Expected: "aaa", Actual: "bbb"}},
 			Missing: []string{},
 			Extra:   []string{"extra.txt"},
 		},

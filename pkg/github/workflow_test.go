@@ -21,7 +21,7 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteWorkflow: %v", err)
 	}
-	wantPath := filepath.Join(root, ".github", "workflows", "ratchet.yml")
+	wantPath := filepath.Join(root, filepath.FromSlash(gha.WorkflowRel))
 	if path != wantPath {
 		t.Fatalf("path = %q, want %q", path, wantPath)
 	}

@@ -68,7 +68,7 @@ func SaveFile(ctx context.Context, path string, cfg Config) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, FileModeFile); err != nil {
 		return fmt.Errorf("write %s: %w", filepath.Base(path), err)
 	}
 	return nil
@@ -79,23 +79,23 @@ func ModuleFromGoMod(ctx context.Context, root string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	path := filepath.Join(root, "go.mod")
+	path := filepath.Join(root, GoModFileName)
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("read go.mod: %w", err)
+		return "", fmt.Errorf("read %s: %w", GoModFileName, err)
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(ctxReader{ctx: ctx, r: f})
 	if err != nil {
-		return "", fmt.Errorf("read go.mod: %w", err)
+		return "", fmt.Errorf("read %s: %w", GoModFileName, err)
 	}
-	mf, err := modfile.Parse("go.mod", data, nil)
+	mf, err := modfile.Parse(GoModFileName, data, nil)
 	if err != nil {
-		return "", fmt.Errorf("parse go.mod: %w", err)
+		return "", fmt.Errorf("parse %s: %w", GoModFileName, err)
 	}
 	if mf.Module == nil || mf.Module.Mod.Path == "" {
-		return "", fmt.Errorf("go.mod: missing module statement")
+		return "", fmt.Errorf("%s: missing module statement", GoModFileName)
 	}
 	return mf.Module.Mod.Path, nil
 }

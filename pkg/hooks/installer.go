@@ -11,7 +11,7 @@ import (
 	"github.com/fow830/ratchet/pkg/tokens"
 )
 
-const preCommitRel = ".git/hooks/pre-commit"
+const preCommitRel = tokens.PreCommitRel
 
 // FileSystem abstracts disk IO for install tests.
 type FileSystem interface {
@@ -69,10 +69,10 @@ func (i *Installer) Install(root string) (string, error) {
 	}
 
 	path := filepath.Join(root, filepath.FromSlash(preCommitRel))
-	if err := fsys.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := fsys.MkdirAll(filepath.Dir(path), tokens.FileModeDir); err != nil {
 		return "", fmt.Errorf("hooks: mkdir: %w", err)
 	}
-	if err := fsys.WriteFile(path, []byte(preCommitScript()), 0o755); err != nil {
+	if err := fsys.WriteFile(path, []byte(preCommitScript()), tokens.FileModeExec); err != nil {
 		return "", fmt.Errorf("hooks: write pre-commit: %w", err)
 	}
 	return path, nil
@@ -94,10 +94,10 @@ elif [ -x ./%[1]s ]; then
   ./%[1]s check --format=%[2]s
 else
   echo "RULE_VIOLATION: HookSetup"
-  echo "FILE: .git/hooks/pre-commit"
+  echo "FILE: %[5]s"
   echo "DETAILS: %[1]s binary not found in PATH, ./%[3]s, or ./%[1]s"
-  echo "ACTION_REQUIRED: Install %[1]s or run: go build -o %[3]s ./cmd/%[1]s"
+  echo "ACTION_REQUIRED: Install %[1]s or run: go build -o %[3]s ./%[4]s"
   exit 1
 fi
-`, tool, format, bin)
+`, tool, format, bin, tokens.CmdRel, tokens.PreCommitRel)
 }

@@ -1,19 +1,44 @@
 // Package tokens holds the pure-Go SSOT configuration for ratchet.
 package tokens
 
-// On-disk artifact names and published identity (single place — no scattered literals).
-const (
-	ConfigFileName = "ratchet.json"
-	LockFileName   = "ratchet.lock"
-	CursorRules    = ".cursorrules"
-	ClaudeSkillRel = ".claude/skills/ratchet.md"
+import "io/fs"
 
-	// ModulePath must match go.mod.
-	ModulePath = "github.com/fow830/ratchet"
-	// ToolName is the CLI / SARIF driver name.
-	ToolName = "ratchet"
-	// BinaryRel is the default local build output path used by CI and hooks.
-	BinaryRel = "bin/" + ToolName
+// Published identity — single source; all other artifact names derive from ToolName.
+const (
+	ToolName   = "ratchet"
+	ModulePath = "github.com/fow830/" + ToolName
+)
+
+// On-disk artifact names and paths derived from ToolName.
+const (
+	ConfigFileName = ToolName + ".json"
+	LockFileName   = ToolName + ".lock"
+	CursorRules    = ".cursorrules"
+	ClaudeSkillRel = ".claude/skills/" + ToolName + ".md"
+	BinaryRel      = "bin/" + ToolName
+	CmdRel         = "cmd/" + ToolName
+	GoModFileName  = "go.mod"
+	PreCommitRel   = ".git/hooks/pre-commit"
+)
+
+// Default clean-architecture layer names and import-path suffixes.
+const (
+	LayerDomain   = "domain"
+	LayerUsecase  = "usecase"
+	LayerDelivery = "delivery"
+
+	SuffixDomain   = "/" + LayerDomain
+	SuffixUsecase  = "/" + LayerUsecase
+	SuffixDelivery = "/" + LayerDelivery
+)
+
+// Filesystem and lock ledger constants.
+const (
+	FileModeFile fs.FileMode = 0o644
+	FileModeExec fs.FileMode = 0o755
+	FileModeDir  fs.FileMode = 0o755
+
+	LockVersion = 1
 )
 
 // ModuleHTTPSURL returns the canonical https:// URL for ModulePath.
@@ -43,14 +68,14 @@ func DefaultConfig(module string) Config {
 	return Config{
 		Module: module,
 		Layers: map[string]string{
-			"/domain":   "domain",
-			"/usecase":  "usecase",
-			"/delivery": "delivery",
+			SuffixDomain:   LayerDomain,
+			SuffixUsecase:  LayerUsecase,
+			SuffixDelivery: LayerDelivery,
 		},
 		AllowedEdges: map[string][]string{
-			"domain":   {},
-			"usecase":  {"domain"},
-			"delivery": {"usecase", "domain"},
+			LayerDomain:   {},
+			LayerUsecase:  {LayerDomain},
+			LayerDelivery: {LayerUsecase, LayerDomain},
 		},
 		ContractFiles: []string{
 			CursorRules,
