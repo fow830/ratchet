@@ -1,5 +1,5 @@
-// Package github generates CI workflows and branch-protection commands.
-package github
+// Package gha generates CI workflows and branch-protection commands.
+package gha
 
 import (
 	"fmt"

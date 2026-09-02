@@ -1,4 +1,4 @@
-package github_test
+package gha_test
 
 import (
 	"os"
@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	githubci "github.com/fow830/ratchet/pkg/github"
+	"github.com/fow830/ratchet/pkg/github"
 )
 
 func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 	root := t.TempDir()
-	path, err := githubci.WriteWorkflow(root)
+	path, err := gha.WriteWorkflow(root)
 	if err != nil {
 		t.Fatalf("WriteWorkflow: %v", err)
 	}
@@ -38,27 +38,27 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 }
 
 func TestProtectMainCommand_IsDeterministic(t *testing.T) {
-	cmd := githubci.ProtectMainCommand("acme", "widgets")
+	cmd := gha.ProtectMainCommand("acme", "widgets")
 	if !strings.Contains(cmd, "gh api") {
 		t.Fatalf("expected gh api command, got %q", cmd)
 	}
 	if !strings.Contains(cmd, "repos/acme/widgets/branches/main/protection") {
 		t.Fatalf("expected protection endpoint: %q", cmd)
 	}
-	if !strings.Contains(cmd, githubci.StatusCheckName) {
+	if !strings.Contains(cmd, gha.StatusCheckName) {
 		t.Fatalf("expected status check context: %q", cmd)
 	}
-	body := githubci.ProtectionBody()
-	if !strings.Contains(body, `"contexts":["`+githubci.StatusCheckName+`"]`) {
+	body := gha.ProtectionBody()
+	if !strings.Contains(body, `"contexts":["`+gha.StatusCheckName+`"]`) {
 		t.Fatalf("protection body missing context: %s", body)
 	}
 }
 
 func TestIsProtectionUnavailable(t *testing.T) {
-	if !githubci.IsProtectionUnavailable(`Upgrade to GitHub Pro or make this repository public`) {
+	if !gha.IsProtectionUnavailable(`Upgrade to GitHub Pro or make this repository public`) {
 		t.Fatal("expected true")
 	}
-	if githubci.IsProtectionUnavailable("ok") {
+	if gha.IsProtectionUnavailable("ok") {
 		t.Fatal("expected false")
 	}
 }
@@ -73,7 +73,7 @@ func TestParseOwnerRepo(t *testing.T) {
 		{"git@github.com:acme/widgets.git", "acme", "widgets"},
 	}
 	for _, tc := range cases {
-		owner, repo, err := githubci.ParseOwnerRepo(tc.remote)
+		owner, repo, err := gha.ParseOwnerRepo(tc.remote)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.remote, err)
 		}

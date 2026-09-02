@@ -23,7 +23,7 @@ func NewGenerator(cfg tokens.Config) *Generator {
 
 // Generate writes agent skill artifacts under root.
 func (g *Generator) Generate(root string) error {
-	if err := os.WriteFile(filepath.Join(root, tokens.CursorRules), []byte(g.cursorRules()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, tokens.CursorRules), []byte(g.CursorRules()), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", tokens.CursorRules, err)
 	}
 
@@ -31,13 +31,14 @@ func (g *Generator) Generate(root string) error {
 	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir skills: %w", err)
 	}
-	if err := os.WriteFile(skillPath, []byte(g.claudeSkill()), 0o644); err != nil {
+	if err := os.WriteFile(skillPath, []byte(g.ClaudeSkill()), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", tokens.ClaudeSkillRel, err)
 	}
 	return nil
 }
 
-func (g *Generator) cursorRules() string {
+// CursorRules returns the deterministic .cursorrules body.
+func (g *Generator) CursorRules() string {
 	froms := make([]string, 0, len(g.cfg.AllowedEdges))
 	for from := range g.cfg.AllowedEdges {
 		froms = append(froms, from)
@@ -72,10 +73,12 @@ Module: %s
 - Prefer tests first; keep gofmt/go vet clean.
 - Run `+"`ratchet check`"+` before claiming architecture is green.
 - Do not manually edit locked contract files without regenerating and re-locking.
-`, g.cfg.Module, strings.Join(edges, "\n"))
+`, escapeMarkdown(g.cfg.Module), strings.Join(edges, "\n"))
 }
 
-func (g *Generator) claudeSkill() string {
+// ClaudeSkill returns the deterministic Claude skill markdown body.
+func (g *Generator) ClaudeSkill() string {
+	mod := escapeMarkdown(g.cfg.Module)
 	return fmt.Sprintf(`# ratchet skill
 
 Use this skill when changing architecture, contracts, or agent rules in module %s.
@@ -89,5 +92,13 @@ Use this skill when changing architecture, contracts, or agent rules in module %
 - Keep Pure Go SSOT.
 - Never introduce Go .so plugins.
 - Enforce layer edges from tokens.Config.
-`, g.cfg.Module)
+`, mod)
+}
+
+// escapeMarkdown escapes backticks and angle brackets in untrusted context fragments.
+func escapeMarkdown(s string) string {
+	s = strings.ReplaceAll(s, "`", "'")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }

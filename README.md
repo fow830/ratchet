@@ -32,10 +32,22 @@ go build -o bin/ratchet ./cmd/ratchet
 | Command | Purpose |
 |---------|---------|
 | `ratchet init` | Bootstrap `.cursorrules`, `ratchet.json`, Claude skill, lock file |
-| `ratchet check` | AST layer fitness + anti-drift (`-f human` default, `-f llm` for agents) |
+| `ratchet check` | AST layer fitness + anti-drift (`-f human\|llm`, `--json`) |
 | `ratchet gen` | Regenerate agent rules and re-lock contracts |
 | `ratchet init-ci` | Write CI workflow; `--protect-main` enables required checks via `gh` |
 | `ratchet init-hooks` | Install local `pre-commit` soft friction |
+
+### Global flags
+
+`--config`, `--json`, `--verbose` / `-v`, `--dry-run`
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | OK — no violations/drift |
+| 1 | Architecture or contract drift |
+| 2 | System/parse/flag error |
 
 ## Layout
 
@@ -44,7 +56,7 @@ cmd/ratchet/          CLI
 pkg/fitness/          AST architecture linter
 pkg/antidrift/        SHA-256 contract lock / verify
 pkg/report/           human + LLM error formatters
-pkg/github/           CI workflow + branch protection helpers
+pkg/github/           CI workflow + branch protection (package gha)
 pkg/hooks/            local git hook installer
 pkg/skills/           .cursorrules + Claude skill generator
 pkg/tokens/           Pure Go SSOT config structs + IO

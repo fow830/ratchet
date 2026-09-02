@@ -2,6 +2,7 @@
 package antidrift
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,16 +24,16 @@ type LockFile struct {
 
 // ChangedFile describes a drifted contract.
 type ChangedFile struct {
-	Path     string
-	Expected string
-	Actual   string
+	Path     string `json:"path"`
+	Expected string `json:"expected"`
+	Actual   string `json:"actual"`
 }
 
 // Diff is the result of Verify.
 type Diff struct {
-	Changed []ChangedFile
-	Missing []string
-	Extra   []string
+	Changed []ChangedFile `json:"changed"`
+	Missing []string      `json:"missing"`
+	Extra   []string      `json:"extra"`
 }
 
 // OK reports whether verification passed with no drift.
@@ -61,6 +62,10 @@ func (d Diff) String() string {
 // Engine locks and verifies contract file hashes under Root.
 type Engine struct {
 	Root string
+	// FS optional filesystem mock; nil uses the real OS disk.
+	FS FileSystem
+	// ConfigPath optional absolute/relative path to ratchet.json; empty uses Root default.
+	ConfigPath string
 }
 
 // New creates an Engine rooted at dir.
@@ -73,8 +78,18 @@ func (e *Engine) LockFilePath() string {
 	return filepath.Join(e.Root, tokens.LockFileName)
 }
 
+func (e *Engine) configPath() string {
+	if e.ConfigPath != "" {
+		return e.ConfigPath
+	}
+	return filepath.Join(e.Root, tokens.ConfigFileName)
+}
+
 // Lock computes SHA-256 hashes for the given relative paths and writes ratchet.lock.
-func (e *Engine) Lock(relPaths []string) error {
+func (e *Engine) Lock(ctx context.Context, relPaths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	sorted := append([]string(nil), relPaths...)
 	for i := range sorted {
 		sorted[i] = filepath.ToSlash(sorted[i])
@@ -83,6 +98,9 @@ func (e *Engine) Lock(relPaths []string) error {
 
 	files := make(map[string]string, len(sorted))
 	for _, rel := range sorted {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if rel == "" {
 			continue
 		}
@@ -98,17 +116,18 @@ func (e *Engine) Lock(relPaths []string) error {
 		return fmt.Errorf("marshal lock: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(e.LockFilePath(), data, 0o644); err != nil {
+	if err := e.fileSystem().WriteFile(e.LockFilePath(), data, 0o644); err != nil {
 		return fmt.Errorf("write lock: %w", err)
 	}
 	return nil
 }
 
 // Verify compares on-disk contract files against ratchet.lock.
-// Changed/Missing come from lock entries; Extra comes from ContractFiles in
-// ratchet.json that exist on disk but are absent from the lock.
-func (e *Engine) Verify() (Diff, error) {
-	data, err := os.ReadFile(e.LockFilePath())
+func (e *Engine) Verify(ctx context.Context) (Diff, error) {
+	if err := ctx.Err(); err != nil {
+		return Diff{}, err
+	}
+	data, err := e.fileSystem().ReadFile(e.LockFilePath())
 	if err != nil {
 		return Diff{}, fmt.Errorf("read lock: %w", err)
 	}
@@ -128,10 +147,13 @@ func (e *Engine) Verify() (Diff, error) {
 	sort.Strings(paths)
 
 	for _, rel := range paths {
+		if err := ctx.Err(); err != nil {
+			return Diff{}, err
+		}
 		expected := lf.Files[rel]
 		actual, err := e.hashFile(rel)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				diff.Missing = append(diff.Missing, rel)
 				continue
 			}
@@ -146,7 +168,7 @@ func (e *Engine) Verify() (Diff, error) {
 		}
 	}
 
-	extra, err := e.findExtra(lf.Files)
+	extra, err := e.findExtra(ctx, lf.Files)
 	if err != nil {
 		return Diff{}, err
 	}
@@ -154,14 +176,17 @@ func (e *Engine) Verify() (Diff, error) {
 	return diff, nil
 }
 
-func (e *Engine) findExtra(locked map[string]string) ([]string, error) {
-	expected, err := e.declaredContracts()
+func (e *Engine) findExtra(ctx context.Context, locked map[string]string) ([]string, error) {
+	expected, err := e.declaredContracts(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var extra []string
 	seen := make(map[string]struct{})
 	for _, rel := range expected {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		rel = filepath.ToSlash(rel)
 		if _, ok := locked[rel]; ok {
 			continue
@@ -170,9 +195,9 @@ func (e *Engine) findExtra(locked map[string]string) ([]string, error) {
 			continue
 		}
 		path := filepath.Join(e.Root, filepath.FromSlash(rel))
-		info, statErr := os.Stat(path)
+		info, statErr := e.fileSystem().Stat(path)
 		if statErr != nil {
-			if os.IsNotExist(statErr) {
+			if errors.Is(statErr, os.ErrNotExist) {
 				continue
 			}
 			return nil, fmt.Errorf("stat %s: %w", rel, statErr)
@@ -187,20 +212,23 @@ func (e *Engine) findExtra(locked map[string]string) ([]string, error) {
 	return extra, nil
 }
 
-func (e *Engine) declaredContracts() ([]string, error) {
-	cfg, err := tokens.Load(e.Root)
+func (e *Engine) declaredContracts(ctx context.Context) ([]string, error) {
+	cfg, err := tokens.LoadFile(ctx, e.configPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	if cfg.ContractFiles == nil {
+		return nil, nil
+	}
 	return cfg.ContractFiles, nil
 }
 
 func (e *Engine) hashFile(rel string) (string, error) {
 	path := filepath.Join(e.Root, filepath.FromSlash(rel))
-	data, err := os.ReadFile(path)
+	data, err := e.fileSystem().ReadFile(path)
 	if err != nil {
 		return "", err
 	}

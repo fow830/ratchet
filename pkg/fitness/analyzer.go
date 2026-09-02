@@ -2,6 +2,7 @@
 package fitness
 
 import (
+	"context"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -14,12 +15,12 @@ import (
 
 // Violation describes an illegal cross-layer import.
 type Violation struct {
-	File          string
-	Line          int
-	ImportPath    string
-	ImporterPkg   string
-	ImporterLayer string
-	ImportedLayer string
+	File          string `json:"file"`
+	Line          int    `json:"line,omitempty"`
+	ImportPath    string `json:"import_path"`
+	ImporterPkg   string `json:"importer_pkg"`
+	ImporterLayer string `json:"importer_layer"`
+	ImportedLayer string `json:"imported_layer"`
 }
 
 func (v Violation) String() string {
@@ -44,12 +45,18 @@ func NewAnalyzer(cfg tokens.Config) *Analyzer {
 }
 
 // Analyze walks root for .go files and returns layer violations.
-func (a *Analyzer) Analyze(root string) ([]Violation, error) {
+func (a *Analyzer) Analyze(ctx context.Context, root string) ([]Violation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	fset := token.NewFileSet()
 	var violations []Violation
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if d.IsDir() {
@@ -79,18 +86,18 @@ func (a *Analyzer) Analyze(root string) ([]Violation, error) {
 		if rel != "." {
 			importerPkg = a.cfg.Module + "/" + rel
 		}
-		importerLayer, ok := a.layerOf(importerPkg)
+		importerLayer, ok := a.LayerOf(importerPkg)
 		if !ok {
 			return nil
 		}
 
 		for _, imp := range file.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-			importedLayer, ok := a.layerOf(importPath)
+			importedLayer, ok := a.LayerOf(importPath)
 			if !ok {
 				continue
 			}
-			if !a.allowed(importerLayer, importedLayer) {
+			if !a.Allowed(importerLayer, importedLayer) {
 				pos := fset.Position(imp.Pos())
 				violations = append(violations, Violation{
 					File:          pos.Filename,
@@ -110,7 +117,8 @@ func (a *Analyzer) Analyze(root string) ([]Violation, error) {
 	return violations, nil
 }
 
-func (a *Analyzer) layerOf(importPath string) (string, bool) {
+// LayerOf resolves an import path to a configured layer (longest suffix wins).
+func (a *Analyzer) LayerOf(importPath string) (string, bool) {
 	type hit struct {
 		suffix string
 		layer  string
@@ -129,7 +137,8 @@ func (a *Analyzer) layerOf(importPath string) (string, bool) {
 	return best.layer, true
 }
 
-func (a *Analyzer) allowed(from, to string) bool {
+// Allowed reports whether from→to is a permitted dependency edge.
+func (a *Analyzer) Allowed(from, to string) bool {
 	if from == to {
 		return true
 	}
