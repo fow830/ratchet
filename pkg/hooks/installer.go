@@ -56,16 +56,16 @@ func Install(root string) (string, error) {
 // Install writes an executable pre-commit hook under root/.git/hooks.
 func (i *Installer) Install(root string) (string, error) {
 	fsys := i.fs()
-	gitDir := filepath.Join(root, ".git")
+	gitDir := filepath.Join(root, tokens.GitDir)
 	info, err := fsys.Stat(gitDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("hooks: %s is not a git repository (.git missing)", root)
+			return "", fmt.Errorf("hooks: %s is not a git repository (%s missing)", root, tokens.GitDir)
 		}
-		return "", fmt.Errorf("hooks: stat .git: %w", err)
+		return "", fmt.Errorf("hooks: stat %s: %w", tokens.GitDir, err)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("hooks: %s/.git is not a directory", root)
+		return "", fmt.Errorf("hooks: %s/%s is not a directory", root, tokens.GitDir)
 	}
 
 	path := filepath.Join(root, filepath.FromSlash(preCommitRel))

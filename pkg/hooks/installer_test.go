@@ -15,8 +15,8 @@ import (
 
 func TestInstall_WritesPreCommit(t *testing.T) {
 	root := t.TempDir()
-	gitDir := filepath.Join(root, ".git", "hooks")
-	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+	gitDir := filepath.Join(root, tokens.GitDir, "hooks")
+	if err := os.MkdirAll(gitDir, tokens.FileModeDir); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
@@ -24,7 +24,7 @@ func TestInstall_WritesPreCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	want := filepath.Join(root, ".git", "hooks", "pre-commit")
+	want := filepath.Join(root, filepath.FromSlash(tokens.PreCommitRel))
 	if path != want {
 		t.Fatalf("path = %q, want %q", path, want)
 	}
@@ -98,7 +98,7 @@ func (m *memFS) WriteFile(name string, data []byte, _ fs.FileMode) error {
 
 type fakeDir struct{}
 
-func (fakeDir) Name() string       { return ".git" }
+func (fakeDir) Name() string       { return tokens.GitDir }
 func (fakeDir) Size() int64        { return 0 }
 func (fakeDir) Mode() fs.FileMode  { return fs.ModeDir | 0o755 }
 func (fakeDir) ModTime() time.Time { return time.Time{} }

@@ -19,8 +19,8 @@ func sampleResult() report.Result {
 			Line:          2,
 			ImportPath:    "example.com/app/internal/usecase",
 			ImporterPkg:   "example.com/app/internal/domain",
-			ImporterLayer: "domain",
-			ImportedLayer: "usecase",
+			ImporterLayer: tokens.LayerDomain,
+			ImportedLayer: tokens.LayerUsecase,
 		}},
 		Drift: antidrift.Diff{
 			Changed: []antidrift.ChangedFile{{Path: tokens.ConfigFileName, Expected: "aaa", Actual: "bbb"}},

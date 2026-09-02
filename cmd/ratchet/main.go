@@ -328,8 +328,8 @@ func enableProtectMain(cmd *cobra.Command, wd string) error {
 	if err := client.ProtectMain(owner, repo, cmd.OutOrStdout(), &stderr); err != nil {
 		msg := stderr.String()
 		fmt.Fprint(cmd.ErrOrStderr(), msg)
-		if strings.Contains(err.Error(), "gh not installed") {
-			fmt.Fprintln(cmd.OutOrStdout(), "gh CLI not found; run:")
+		if strings.Contains(err.Error(), gha.GhBinary+" not installed") {
+			fmt.Fprintln(cmd.OutOrStdout(), gha.GhBinary+" CLI not found; run:")
 			fmt.Fprintln(cmd.OutOrStdout(), manual)
 			return err
 		}

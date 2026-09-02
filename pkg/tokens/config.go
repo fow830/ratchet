@@ -18,7 +18,12 @@ const (
 	BinaryRel      = "bin/" + ToolName
 	CmdRel         = "cmd/" + ToolName
 	GoModFileName  = "go.mod"
-	PreCommitRel   = ".git/hooks/pre-commit"
+	GitDir         = ".git"
+	PreCommitRel   = GitDir + "/hooks/pre-commit"
+	DirVendor      = "vendor"
+	DirTestdata    = "testdata"
+	GoFileExt      = ".go"
+	GoTestSuffix   = "_test.go"
 )
 
 // Default clean-architecture layer names and import-path suffixes.

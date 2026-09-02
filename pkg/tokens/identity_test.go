@@ -33,6 +33,7 @@ func TestIdentityTokens_Derived(t *testing.T) {
 		"CmdRel":         "cmd/" + tokens.ToolName,
 		"ClaudeSkillRel": ".claude/skills/" + tokens.ToolName + ".md",
 		"ModulePath":     "github.com/fow830/" + tokens.ToolName,
+		"PreCommitRel":   tokens.GitDir + "/hooks/pre-commit",
 	}
 	got := map[string]string{
 		"ConfigFileName": tokens.ConfigFileName,
@@ -41,6 +42,7 @@ func TestIdentityTokens_Derived(t *testing.T) {
 		"CmdRel":         tokens.CmdRel,
 		"ClaudeSkillRel": tokens.ClaudeSkillRel,
 		"ModulePath":     tokens.ModulePath,
+		"PreCommitRel":   tokens.PreCommitRel,
 	}
 	for k, want := range cases {
 		if got[k] != want {

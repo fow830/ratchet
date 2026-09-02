@@ -18,13 +18,24 @@ import (
 // StatusCheckName is the GitHub Actions job name and required check context.
 const StatusCheckName = tokens.ToolName
 
-// WorkflowRel is the generated workflow path relative to repo root.
-const WorkflowRel = ".github/workflows/" + tokens.ToolName + ".yml"
+// DefaultBranch is the protected / CI target branch.
+const DefaultBranch = "main"
+
+// Workflow / GitHub identity tokens.
+const (
+	WorkflowDir     = ".github/workflows/"
+	WorkflowRel     = WorkflowDir + tokens.ToolName + ".yml"
+	GitHubHost      = "github.com"
+	GitHubSSHPrefix = "git@" + GitHubHost + ":"
+	GitHubHTTPSMark = GitHubHost + "/"
+	GhBinary        = "gh"
+)
 
 // CI pin tokens (single place for workflow template + tests).
 const (
 	GoreleaserAction = "goreleaser/goreleaser-action@v6"
 	GoreleaserPin    = "~> v2.12"
+	GoreleaserDist   = "goreleaser"
 	CheckoutAction   = "actions/checkout@v4"
 	SetupGoAction    = "actions/setup-go@v5"
 )
@@ -112,10 +123,10 @@ func WorkflowYAML() string {
 
 on:
   push:
-    branches: [main]
+    branches: [%s]
     tags: ['v*.*.*']
   pull_request:
-    branches: [main]
+    branches: [%s]
 
 jobs:
   check:
@@ -126,7 +137,7 @@ jobs:
 
       - uses: %s
         with:
-          go-version-file: go.mod
+          go-version-file: %s
 
       - name: Test
         run: go test ./...
@@ -154,7 +165,7 @@ jobs:
 
       - uses: %s
         with:
-          go-version-file: go.mod
+          go-version-file: %s
 
       - name: Test
         run: go test ./...
@@ -164,29 +175,31 @@ jobs:
 
       - uses: %s
         with:
-          distribution: goreleaser
+          distribution: %s
           version: '%s'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-`, StatusCheckName, StatusCheckName, CheckoutAction, SetupGoAction,
+`, StatusCheckName, DefaultBranch, DefaultBranch, StatusCheckName,
+		CheckoutAction, SetupGoAction, tokens.GoModFileName,
 		tokens.ToolName, tokens.BinaryRel, tokens.CmdRel,
 		tokens.BinaryRel, report.FormatLLM,
-		CheckoutAction, SetupGoAction, GoreleaserAction, GoreleaserPin)
+		CheckoutAction, SetupGoAction, tokens.GoModFileName,
+		GoreleaserAction, GoreleaserDist, GoreleaserPin)
 }
 
 // ProtectMain enables branch protection via gh api using the injectable runner.
 func (c *Client) ProtectMain(owner, repo string, stdout, stderr io.Writer) error {
 	r := c.runner()
-	ghPath, err := r.LookPath("gh")
+	ghPath, err := r.LookPath(GhBinary)
 	if err != nil {
-		return fmt.Errorf("protect-main: gh not installed")
+		return fmt.Errorf("protect-main: %s not installed", GhBinary)
 	}
 	args, body := ProtectMainArgs(owner, repo)
 	return r.Run(ghPath, args, bytes.NewBufferString(body), stdout, stderr)
 }
 
-// ProtectionBody is the JSON body for PUT .../branches/main/protection.
+// ProtectionBody is the JSON body for PUT .../branches/<DefaultBranch>/protection.
 func ProtectionBody() string {
 	return fmt.Sprintf(
 		`{"required_status_checks":{"strict":true,"contexts":[%q]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null}`,
@@ -200,7 +213,7 @@ func ProtectMainArgs(owner, repo string) (args []string, body string) {
 	args = []string{
 		"api",
 		"-X", "PUT",
-		fmt.Sprintf("repos/%s/%s/branches/main/protection", owner, repo),
+		fmt.Sprintf("repos/%s/%s/branches/%s/protection", owner, repo, DefaultBranch),
 		"-H", "Accept: application/vnd.github+json",
 		"--input", "-",
 	}
@@ -211,25 +224,25 @@ func ProtectMainArgs(owner, repo string) (args []string, body string) {
 func ProtectMainCommand(owner, repo string) string {
 	_, body := ProtectMainArgs(owner, repo)
 	return fmt.Sprintf(
-		`printf '%%s' '%s' | gh api -X PUT repos/%s/%s/branches/main/protection -H "Accept: application/vnd.github+json" --input -`,
-		body, owner, repo,
+		`printf '%%s' '%s' | %s api -X PUT repos/%s/%s/branches/%s/protection -H "Accept: application/vnd.github+json" --input -`,
+		body, GhBinary, owner, repo, DefaultBranch,
 	)
 }
 
 // ParseOwnerRepo extracts owner/repo from a github.com remote URL.
 func ParseOwnerRepo(remote string) (owner, repo string, err error) {
 	remote = strings.TrimSpace(remote)
-	remote = strings.TrimSuffix(remote, ".git")
+	remote = strings.TrimSuffix(remote, tokens.GitDir)
 	switch {
-	case strings.HasPrefix(remote, "git@github.com:"):
-		parts := strings.SplitN(strings.TrimPrefix(remote, "git@github.com:"), "/", 2)
+	case strings.HasPrefix(remote, GitHubSSHPrefix):
+		parts := strings.SplitN(strings.TrimPrefix(remote, GitHubSSHPrefix), "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return "", "", fmt.Errorf("invalid ssh remote: %s", remote)
 		}
 		return parts[0], parts[1], nil
-	case strings.Contains(remote, "github.com/"):
-		idx := strings.Index(remote, "github.com/")
-		rest := remote[idx+len("github.com/"):]
+	case strings.Contains(remote, GitHubHTTPSMark):
+		idx := strings.Index(remote, GitHubHTTPSMark)
+		rest := remote[idx+len(GitHubHTTPSMark):]
 		parts := strings.SplitN(rest, "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return "", "", fmt.Errorf("invalid https remote: %s", remote)

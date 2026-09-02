@@ -78,12 +78,12 @@ func TestCLI_InitHooksWithoutGit(t *testing.T) {
 	root.SetArgs([]string{"init-hooks"})
 	err = root.Execute()
 	if err == nil {
-		t.Fatal("expected error without .git")
+		t.Fatalf("expected error without %s", tokens.GitDir)
 	}
 	if exitCode(err) != exitSystem {
 		t.Fatalf("exit=%d want %d", exitCode(err), exitSystem)
 	}
-	if !strings.Contains(err.Error(), ".git") {
+	if !strings.Contains(err.Error(), tokens.GitDir) {
 		t.Fatalf("err=%v", err)
 	}
 }

@@ -33,7 +33,7 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 	for _, needle := range []string{
 		"push:",
 		"pull_request:",
-		"branches: [main]",
+		"branches: [" + gha.DefaultBranch + "]",
 		"tags: ['v*.*.*']",
 		"go test ./...",
 		"go vet ./...",
@@ -74,17 +74,17 @@ func TestProtectMain_UsesMockRunner(t *testing.T) {
 		t.Fatalf("name=%s", r.lastName)
 	}
 	joined := strings.Join(r.lastArgs, " ")
-	if !strings.Contains(joined, "repos/acme/widgets/branches/main/protection") {
+	if !strings.Contains(joined, "repos/acme/widgets/branches/"+gha.DefaultBranch+"/protection") {
 		t.Fatalf("args=%v", r.lastArgs)
 	}
 }
 
 func TestProtectMainCommand_IsDeterministic(t *testing.T) {
 	cmd := gha.ProtectMainCommand("acme", "widgets")
-	if !strings.Contains(cmd, "gh api") {
-		t.Fatalf("expected gh api command, got %q", cmd)
+	if !strings.Contains(cmd, gha.GhBinary+" api") {
+		t.Fatalf("expected %s api command, got %q", gha.GhBinary, cmd)
 	}
-	if !strings.Contains(cmd, "repos/acme/widgets/branches/main/protection") {
+	if !strings.Contains(cmd, "repos/acme/widgets/branches/"+gha.DefaultBranch+"/protection") {
 		t.Fatalf("expected protection endpoint: %q", cmd)
 	}
 }

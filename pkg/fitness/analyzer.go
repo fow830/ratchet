@@ -61,14 +61,14 @@ func (a *Analyzer) Analyze(ctx context.Context, root string) ([]Violation, error
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if name == "vendor" || name == ".git" || name == "testdata" || strings.HasPrefix(name, ".") {
+			if name == tokens.DirVendor || name == tokens.GitDir || name == tokens.DirTestdata || strings.HasPrefix(name, ".") {
 				if path != root {
 					return filepath.SkipDir
 				}
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if !strings.HasSuffix(path, tokens.GoFileExt) || strings.HasSuffix(path, tokens.GoTestSuffix) {
 			return nil
 		}
 
@@ -117,7 +117,8 @@ func (a *Analyzer) Analyze(ctx context.Context, root string) ([]Violation, error
 	return violations, nil
 }
 
-// LayerOf resolves an import path to a configured layer (longest suffix wins).
+// LayerOf resolves an import path to a configured layer (longest suffix wins;
+// equal length ties break lexicographically on the suffix for map-stable results).
 func (a *Analyzer) LayerOf(importPath string) (string, bool) {
 	type hit struct {
 		suffix string
@@ -126,7 +127,7 @@ func (a *Analyzer) LayerOf(importPath string) (string, bool) {
 	var best hit
 	for suffix, layer := range a.cfg.Layers {
 		if strings.HasSuffix(importPath, suffix) || strings.Contains(importPath, suffix+"/") {
-			if len(suffix) > len(best.suffix) {
+			if len(suffix) > len(best.suffix) || (len(suffix) == len(best.suffix) && suffix > best.suffix) {
 				best = hit{suffix: suffix, layer: layer}
 			}
 		}

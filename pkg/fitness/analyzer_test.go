@@ -81,6 +81,26 @@ func TestAnalyzer_LayerOf_LongestSuffixWins(t *testing.T) {
 	}
 }
 
+func TestAnalyzer_LayerOf_EqualLengthTieBreak(t *testing.T) {
+	// Same-length overlapping hits: lexicographically greater suffix wins (stable under map iteration).
+	cfg := tokens.Config{
+		Module: "example.com/app",
+		Layers: map[string]string{
+			"/ab": "first",
+			"/cd": "second",
+		},
+	}
+	a := fitness.NewAnalyzer(cfg)
+	// Path contains "/ab/" and has suffix "/cd" — both suffixes match, equal length.
+	path := "example.com/app/ab/cd"
+	for i := 0; i < 50; i++ {
+		got, ok := a.LayerOf(path)
+		if !ok || got != "second" {
+			t.Fatalf("iter %d: LayerOf(%q)=(%q,%v) want (second,true)", i, path, got, ok)
+		}
+	}
+}
+
 func TestAnalyzer_TableDrivenLayerOf(t *testing.T) {
 	cfg := tokens.DefaultConfig("example.com/app")
 	cfg.Layers["/domain/sub"] = "domain_sub"
