@@ -75,9 +75,17 @@ func (e *Engine) LockFilePath() string {
 
 // Lock computes SHA-256 hashes for the given relative paths and writes ratchet.lock.
 func (e *Engine) Lock(relPaths []string) error {
-	files := make(map[string]string, len(relPaths))
-	for _, rel := range relPaths {
-		rel = filepath.ToSlash(rel)
+	sorted := append([]string(nil), relPaths...)
+	for i := range sorted {
+		sorted[i] = filepath.ToSlash(sorted[i])
+	}
+	sort.Strings(sorted)
+
+	files := make(map[string]string, len(sorted))
+	for _, rel := range sorted {
+		if rel == "" {
+			continue
+		}
 		sum, err := e.hashFile(rel)
 		if err != nil {
 			return err

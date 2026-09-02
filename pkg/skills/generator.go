@@ -23,16 +23,16 @@ func NewGenerator(cfg tokens.Config) *Generator {
 
 // Generate writes agent skill artifacts under root.
 func (g *Generator) Generate(root string) error {
-	if err := os.WriteFile(filepath.Join(root, ".cursorrules"), []byte(g.cursorRules()), 0o644); err != nil {
-		return fmt.Errorf("write .cursorrules: %w", err)
+	if err := os.WriteFile(filepath.Join(root, tokens.CursorRules), []byte(g.cursorRules()), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tokens.CursorRules, err)
 	}
 
-	skillDir := filepath.Join(root, ".claude", "skills")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+	skillPath := filepath.Join(root, filepath.FromSlash(tokens.ClaudeSkillRel))
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir skills: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "ratchet.md"), []byte(g.claudeSkill()), 0o644); err != nil {
-		return fmt.Errorf("write claude skill: %w", err)
+	if err := os.WriteFile(skillPath, []byte(g.claudeSkill()), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tokens.ClaudeSkillRel, err)
 	}
 	return nil
 }

@@ -111,23 +111,29 @@ func (a *Analyzer) Analyze(root string) ([]Violation, error) {
 }
 
 func (a *Analyzer) layerOf(importPath string) (string, bool) {
+	type hit struct {
+		suffix string
+		layer  string
+	}
+	var best hit
 	for suffix, layer := range a.cfg.Layers {
 		if strings.HasSuffix(importPath, suffix) || strings.Contains(importPath, suffix+"/") {
-			return layer, true
+			if len(suffix) > len(best.suffix) {
+				best = hit{suffix: suffix, layer: layer}
+			}
 		}
 	}
-	return "", false
+	if best.layer == "" {
+		return "", false
+	}
+	return best.layer, true
 }
 
 func (a *Analyzer) allowed(from, to string) bool {
 	if from == to {
 		return true
 	}
-	allowed, ok := a.cfg.AllowedEdges[from]
-	if !ok {
-		return false
-	}
-	for _, edge := range allowed {
+	for _, edge := range a.cfg.AllowedEdges[from] {
 		if edge == to {
 			return true
 		}

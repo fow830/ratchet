@@ -38,11 +38,11 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 }
 
 func TestProtectMainCommand_IsDeterministic(t *testing.T) {
-	cmd := githubci.ProtectMainCommand("fow830", "ratchet")
+	cmd := githubci.ProtectMainCommand("acme", "widgets")
 	if !strings.Contains(cmd, "gh api") {
 		t.Fatalf("expected gh api command, got %q", cmd)
 	}
-	if !strings.Contains(cmd, "repos/fow830/ratchet/branches/main/protection") {
+	if !strings.Contains(cmd, "repos/acme/widgets/branches/main/protection") {
 		t.Fatalf("expected protection endpoint: %q", cmd)
 	}
 	if !strings.Contains(cmd, githubci.StatusCheckName) {
@@ -64,11 +64,21 @@ func TestIsProtectionUnavailable(t *testing.T) {
 }
 
 func TestParseOwnerRepo(t *testing.T) {
-	owner, repo, err := githubci.ParseOwnerRepo("https://github.com/fow830/ratchet.git")
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		remote    string
+		wantOwner string
+		wantRepo  string
+	}{
+		{"https://github.com/acme/widgets.git", "acme", "widgets"},
+		{"git@github.com:acme/widgets.git", "acme", "widgets"},
 	}
-	if owner != "fow830" || repo != "ratchet" {
-		t.Fatalf("got %s/%s", owner, repo)
+	for _, tc := range cases {
+		owner, repo, err := githubci.ParseOwnerRepo(tc.remote)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.remote, err)
+		}
+		if owner != tc.wantOwner || repo != tc.wantRepo {
+			t.Fatalf("%s: got %s/%s", tc.remote, owner, repo)
+		}
 	}
 }

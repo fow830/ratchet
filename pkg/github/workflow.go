@@ -6,16 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/fow830/ratchet/pkg/report"
 )
 
 // StatusCheckName is the GitHub Actions job name and required check context.
 const StatusCheckName = "ratchet"
 
-const workflowRel = ".github/workflows/ratchet.yml"
+// WorkflowRel is the generated workflow path relative to repo root.
+const WorkflowRel = ".github/workflows/ratchet.yml"
 
 // WriteWorkflow writes .github/workflows/ratchet.yml under root.
 func WriteWorkflow(root string) (string, error) {
-	path := filepath.Join(root, filepath.FromSlash(workflowRel))
+	path := filepath.Join(root, filepath.FromSlash(WorkflowRel))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", fmt.Errorf("mkdir workflows: %w", err)
 	}
@@ -52,8 +55,8 @@ jobs:
         run: go build -o bin/ratchet ./cmd/ratchet
 
       - name: Architecture check
-        run: ./bin/ratchet check --format=llm
-`, StatusCheckName, StatusCheckName)
+        run: ./bin/ratchet check --format=%s
+`, StatusCheckName, StatusCheckName, report.FormatLLM)
 }
 
 // ProtectionBody is the JSON body for PUT .../branches/main/protection.

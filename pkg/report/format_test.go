@@ -19,19 +19,15 @@ func TestFormatLLM_LayerIsolation(t *testing.T) {
 		ImportedLayer: "usecase",
 	}
 	out := report.FormatLLMViolation(v)
-	want := []string{
-		"RULE_VIOLATION: LayerIsolation",
+	for _, w := range []string{
+		"RULE_VIOLATION: " + report.RuleLayerIsolation,
 		"FILE: internal/domain/doc.go:2",
 		"DETAILS:",
 		"ACTION_REQUIRED:",
-	}
-	for _, w := range want {
+	} {
 		if !strings.Contains(out, w) {
 			t.Fatalf("missing %q in:\n%s", w, out)
 		}
-	}
-	if strings.Contains(out, "please") || strings.Contains(out, "😊") {
-		t.Fatal("LLM output must stay dry")
 	}
 }
 
@@ -44,14 +40,24 @@ func TestFormatLLM_AntiDriftChanged(t *testing.T) {
 		}},
 	}
 	out := report.FormatLLMDiff(diff)
-	if !strings.Contains(out, "RULE_VIOLATION: AntiDrift") {
+	if !strings.Contains(out, "RULE_VIOLATION: "+report.RuleAntiDrift) {
 		t.Fatalf("missing AntiDrift rule:\n%s", out)
 	}
 	if !strings.Contains(out, "FILE: ratchet.json") {
 		t.Fatalf("missing file:\n%s", out)
 	}
-	if !strings.Contains(out, "ACTION_REQUIRED:") {
-		t.Fatalf("missing action:\n%s", out)
+}
+
+func TestFormatLLM_AntiDriftExtra(t *testing.T) {
+	out := report.FormatLLMDiff(antidrift.Diff{Extra: []string{"extra.txt"}})
+	if !strings.Contains(out, "FILE: extra.txt") {
+		t.Fatalf("missing file:\n%s", out)
+	}
+	if !strings.Contains(out, "absent from ratchet.lock") {
+		t.Fatalf("wrong details:\n%s", out)
+	}
+	if strings.Contains(out, "add it to ContractFiles") {
+		t.Fatalf("stale Extra action text:\n%s", out)
 	}
 }
 

@@ -12,6 +12,9 @@ import (
 const (
 	FormatHuman = "human"
 	FormatLLM   = "llm"
+
+	RuleLayerIsolation = "LayerIsolation"
+	RuleAntiDrift      = "AntiDrift"
 )
 
 // FormatHumanViolation returns a single-line human-readable violation.
@@ -25,20 +28,18 @@ func FormatLLMViolation(v fitness.Violation) string {
 	if v.Line > 0 {
 		file = fmt.Sprintf("%s:%d", v.File, v.Line)
 	}
-	details := fmt.Sprintf(
-		"package %q (layer %q) imports %q (layer %q); edge is forbidden",
-		v.ImporterPkg, v.ImporterLayer, v.ImportPath, v.ImportedLayer,
+	return llmBlock(
+		RuleLayerIsolation,
+		file,
+		fmt.Sprintf(
+			"package %q (layer %q) imports %q (layer %q); edge is forbidden",
+			v.ImporterPkg, v.ImporterLayer, v.ImportPath, v.ImportedLayer,
+		),
+		fmt.Sprintf(
+			"Remove import %q from %s, or move the dependency so layer %q only depends on allowed layers.",
+			v.ImportPath, v.File, v.ImporterLayer,
+		),
 	)
-	action := fmt.Sprintf(
-		"Remove import %q from %s, or move the dependency so layer %q only depends on allowed layers.",
-		v.ImportPath, v.File, v.ImporterLayer,
-	)
-	return strings.Join([]string{
-		"RULE_VIOLATION: LayerIsolation",
-		"FILE: " + file,
-		"DETAILS: " + details,
-		"ACTION_REQUIRED: " + action,
-	}, "\n")
 }
 
 // FormatHumanDiff returns the antidrift human report.
@@ -46,32 +47,41 @@ func FormatHumanDiff(d antidrift.Diff) string {
 	return d.String()
 }
 
-// FormatLLMDiff returns one LLM block per drifted/missing contract file.
+// FormatLLMDiff returns one LLM block per drifted/missing/extra contract file.
 func FormatLLMDiff(d antidrift.Diff) string {
 	var blocks []string
 	for _, c := range d.Changed {
-		blocks = append(blocks, strings.Join([]string{
-			"RULE_VIOLATION: AntiDrift",
-			"FILE: " + c.Path,
-			fmt.Sprintf("DETAILS: contract hash mismatch expected=%s actual=%s", c.Expected, c.Actual),
-			"ACTION_REQUIRED: Restore generated content or run `ratchet gen` then commit the updated ratchet.lock.",
-		}, "\n"))
+		blocks = append(blocks, llmBlock(
+			RuleAntiDrift,
+			c.Path,
+			fmt.Sprintf("contract hash mismatch expected=%s actual=%s", c.Expected, c.Actual),
+			"Restore generated content or run `ratchet gen` then commit the updated ratchet.lock.",
+		))
 	}
 	for _, m := range d.Missing {
-		blocks = append(blocks, strings.Join([]string{
-			"RULE_VIOLATION: AntiDrift",
-			"FILE: " + m,
-			"DETAILS: locked contract file is missing on disk",
-			"ACTION_REQUIRED: Restore the file or run `ratchet gen` to regenerate contracts and lock.",
-		}, "\n"))
+		blocks = append(blocks, llmBlock(
+			RuleAntiDrift,
+			m,
+			"locked contract file is missing on disk",
+			"Restore the file or run `ratchet gen` to regenerate contracts and lock.",
+		))
 	}
 	for _, e := range d.Extra {
-		blocks = append(blocks, strings.Join([]string{
-			"RULE_VIOLATION: AntiDrift",
-			"FILE: " + e,
-			"DETAILS: unexpected unlocked contract file present",
-			"ACTION_REQUIRED: Remove the file or add it to ContractFiles and run `ratchet gen`.",
-		}, "\n"))
+		blocks = append(blocks, llmBlock(
+			RuleAntiDrift,
+			e,
+			"declared contract file exists on disk but is absent from ratchet.lock",
+			"Run `ratchet gen` to lock it, or remove it from ContractFiles in ratchet.json.",
+		))
 	}
 	return strings.Join(blocks, "\n\n")
+}
+
+func llmBlock(rule, file, details, action string) string {
+	return strings.Join([]string{
+		"RULE_VIOLATION: " + rule,
+		"FILE: " + file,
+		"DETAILS: " + details,
+		"ACTION_REQUIRED: " + action,
+	}, "\n")
 }
