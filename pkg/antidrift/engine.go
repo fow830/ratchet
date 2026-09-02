@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-)
 
-const lockFileName = "ratchet.lock"
+	"github.com/fow830/ratchet/pkg/tokens"
+)
 
 // LockFile is the on-disk hash ledger for contract files.
 type LockFile struct {
@@ -69,7 +69,7 @@ func New(root string) *Engine {
 
 // LockFilePath returns the absolute path of ratchet.lock.
 func (e *Engine) LockFilePath() string {
-	return filepath.Join(e.Root, lockFileName)
+	return filepath.Join(e.Root, tokens.LockFileName)
 }
 
 // Lock computes SHA-256 hashes for the given relative paths and writes ratchet.lock.
@@ -107,8 +107,6 @@ func (e *Engine) Verify() (Diff, error) {
 	}
 
 	var diff Diff
-	seen := make(map[string]struct{}, len(lf.Files))
-
 	paths := make([]string, 0, len(lf.Files))
 	for p := range lf.Files {
 		paths = append(paths, p)
@@ -117,7 +115,6 @@ func (e *Engine) Verify() (Diff, error) {
 
 	for _, rel := range paths {
 		expected := lf.Files[rel]
-		seen[rel] = struct{}{}
 		actual, err := e.hashFile(rel)
 		if err != nil {
 			if os.IsNotExist(err) {

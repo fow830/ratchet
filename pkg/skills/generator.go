@@ -81,7 +81,7 @@ func (g *Generator) claudeSkill() string {
 Use this skill when changing architecture, contracts, or agent rules in module %s.
 
 ## Commands
-- `+"`ratchet init`"+` — bootstrap .cursorrules and ratchet.go
+- `+"`ratchet init`"+` — bootstrap .cursorrules and ratchet.json
 - `+"`ratchet check`"+` — AST fitness + anti-drift verify
 - `+"`ratchet gen`"+` — regenerate agent skill rules and lock contracts
 

@@ -17,6 +17,6 @@
   },
   "contract_files": [
     ".cursorrules",
-    "ratchet.go"
+    "ratchet.json"
   ]
 }

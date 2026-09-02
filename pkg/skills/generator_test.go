@@ -12,7 +12,7 @@ import (
 
 func TestGenerator_WritesCursorRulesAndClaudeSkill(t *testing.T) {
 	root := t.TempDir()
-	cfg := tokens.DefaultConfig("github.com/fow830/ratchet")
+	cfg := tokens.DefaultConfig("example.com/app")
 
 	g := skills.NewGenerator(cfg)
 	if err := g.Generate(root); err != nil {

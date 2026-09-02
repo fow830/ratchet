@@ -38,7 +38,7 @@ func TestFormatLLM_LayerIsolation(t *testing.T) {
 func TestFormatLLM_AntiDriftChanged(t *testing.T) {
 	diff := antidrift.Diff{
 		Changed: []antidrift.ChangedFile{{
-			Path:     "ratchet.go",
+			Path:     "ratchet.json",
 			Expected: "aaa",
 			Actual:   "bbb",
 		}},
@@ -47,7 +47,7 @@ func TestFormatLLM_AntiDriftChanged(t *testing.T) {
 	if !strings.Contains(out, "RULE_VIOLATION: AntiDrift") {
 		t.Fatalf("missing AntiDrift rule:\n%s", out)
 	}
-	if !strings.Contains(out, "FILE: ratchet.go") {
+	if !strings.Contains(out, "FILE: ratchet.json") {
 		t.Fatalf("missing file:\n%s", out)
 	}
 	if !strings.Contains(out, "ACTION_REQUIRED:") {

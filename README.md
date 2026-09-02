@@ -12,7 +12,7 @@ True architectural lock-in is guaranteed at the **CI/CD boundary** via **Exit Co
 |-------|-----------|-------|
 | Local hook | `ratchet init-hooks` → `.git/hooks/pre-commit` | No (bypassable) |
 | CI | `.github/workflows/ratchet.yml` → `ratchet check --format=llm` | Yes (exit 1) |
-| Server | `ratchet init-ci --protect-main` required status check | Yes (GitHub enforces) |
+| Server | `ratchet init-ci --protect-main` required status check | Yes (needs GitHub Pro on private personal repos, or a public repo) |
 
 ## Guardrails
 
@@ -31,10 +31,10 @@ go build -o bin/ratchet ./cmd/ratchet
 
 | Command | Purpose |
 |---------|---------|
-| `ratchet init` | Bootstrap `.cursorrules`, `ratchet.go` / `ratchet.json`, Claude skill, lock file |
-| `ratchet check` | AST layer fitness + anti-drift verify (`--format=human` default, `--format=llm` for agents) |
+| `ratchet init` | Bootstrap `.cursorrules`, `ratchet.json`, Claude skill, lock file |
+| `ratchet check` | AST layer fitness + anti-drift (`-f human` default, `-f llm` for agents) |
 | `ratchet gen` | Regenerate agent rules and re-lock contracts |
-| `ratchet init-ci` | Write `.github/workflows/ratchet.yml`; `--protect-main` enables required checks via `gh` |
+| `ratchet init-ci` | Write CI workflow; `--protect-main` enables required checks via `gh` |
 | `ratchet init-hooks` | Install local `pre-commit` soft friction |
 
 ## Layout
@@ -47,7 +47,7 @@ pkg/report/           human + LLM error formatters
 pkg/github/           CI workflow + branch protection helpers
 pkg/hooks/            local git hook installer
 pkg/skills/           .cursorrules + Claude skill generator
-pkg/tokens/           Pure Go SSOT config structs
+pkg/tokens/           Pure Go SSOT config structs + IO
 ```
 
 ## License

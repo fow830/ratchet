@@ -8,9 +8,25 @@ import (
 	"strings"
 )
 
+// StatusCheckName is the GitHub Actions job name and required check context.
+const StatusCheckName = "ratchet"
+
 const workflowRel = ".github/workflows/ratchet.yml"
 
-const workflowYAML = `name: ratchet
+// WriteWorkflow writes .github/workflows/ratchet.yml under root.
+func WriteWorkflow(root string) (string, error) {
+	path := filepath.Join(root, filepath.FromSlash(workflowRel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("mkdir workflows: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(workflowYAML()), 0o644); err != nil {
+		return "", fmt.Errorf("write workflow: %w", err)
+	}
+	return path, nil
+}
+
+func workflowYAML() string {
+	return fmt.Sprintf(`name: %s
 
 on:
   push:
@@ -20,7 +36,7 @@ on:
 
 jobs:
   check:
-    name: ratchet
+    name: %s
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,24 +53,20 @@ jobs:
 
       - name: Architecture check
         run: ./bin/ratchet check --format=llm
-`
+`, StatusCheckName, StatusCheckName)
+}
 
-// WriteWorkflow writes .github/workflows/ratchet.yml under root.
-func WriteWorkflow(root string) (string, error) {
-	path := filepath.Join(root, filepath.FromSlash(workflowRel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", fmt.Errorf("mkdir workflows: %w", err)
-	}
-	if err := os.WriteFile(path, []byte(workflowYAML), 0o644); err != nil {
-		return "", fmt.Errorf("write workflow: %w", err)
-	}
-	return path, nil
+// ProtectionBody is the JSON body for PUT .../branches/main/protection.
+func ProtectionBody() string {
+	return fmt.Sprintf(
+		`{"required_status_checks":{"strict":true,"contexts":[%q]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null}`,
+		StatusCheckName,
+	)
 }
 
 // ProtectMainArgs returns gh argv and JSON body for PUT branch protection.
-// Required check context "ratchet" matches jobs.check.name in the workflow.
 func ProtectMainArgs(owner, repo string) (args []string, body string) {
-	body = `{"required_status_checks":{"strict":true,"contexts":["ratchet"]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null}`
+	body = ProtectionBody()
 	args = []string{
 		"api",
 		"-X", "PUT",
@@ -96,4 +108,11 @@ func ParseOwnerRepo(remote string) (owner, repo string, err error) {
 	default:
 		return "", "", fmt.Errorf("unsupported remote: %s", remote)
 	}
+}
+
+// IsProtectionUnavailable reports GitHub plan/visibility errors (403 Pro / public required).
+func IsProtectionUnavailable(stderr string) bool {
+	s := strings.ToLower(stderr)
+	return strings.Contains(s, "upgrade to github pro") ||
+		strings.Contains(s, "make this repository public")
 }

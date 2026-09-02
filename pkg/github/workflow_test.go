@@ -45,8 +45,21 @@ func TestProtectMainCommand_IsDeterministic(t *testing.T) {
 	if !strings.Contains(cmd, "repos/fow830/ratchet/branches/main/protection") {
 		t.Fatalf("expected protection endpoint: %q", cmd)
 	}
-	if !strings.Contains(cmd, `"contexts":["ratchet"]`) {
+	if !strings.Contains(cmd, githubci.StatusCheckName) {
 		t.Fatalf("expected status check context: %q", cmd)
+	}
+	body := githubci.ProtectionBody()
+	if !strings.Contains(body, `"contexts":["`+githubci.StatusCheckName+`"]`) {
+		t.Fatalf("protection body missing context: %s", body)
+	}
+}
+
+func TestIsProtectionUnavailable(t *testing.T) {
+	if !githubci.IsProtectionUnavailable(`Upgrade to GitHub Pro or make this repository public`) {
+		t.Fatal("expected true")
+	}
+	if githubci.IsProtectionUnavailable("ok") {
+		t.Fatal("expected false")
 	}
 }
 
