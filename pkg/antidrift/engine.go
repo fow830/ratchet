@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,6 +97,8 @@ func (e *Engine) Lock(relPaths []string) error {
 }
 
 // Verify compares on-disk contract files against ratchet.lock.
+// Changed/Missing come from lock entries; Extra comes from ContractFiles in
+// ratchet.json that exist on disk but are absent from the lock.
 func (e *Engine) Verify() (Diff, error) {
 	data, err := os.ReadFile(e.LockFilePath())
 	if err != nil {
@@ -104,6 +107,9 @@ func (e *Engine) Verify() (Diff, error) {
 	var lf LockFile
 	if err := json.Unmarshal(data, &lf); err != nil {
 		return Diff{}, fmt.Errorf("parse lock: %w", err)
+	}
+	if lf.Files == nil {
+		lf.Files = map[string]string{}
 	}
 
 	var diff Diff
@@ -131,7 +137,57 @@ func (e *Engine) Verify() (Diff, error) {
 			})
 		}
 	}
+
+	extra, err := e.findExtra(lf.Files)
+	if err != nil {
+		return Diff{}, err
+	}
+	diff.Extra = extra
 	return diff, nil
+}
+
+func (e *Engine) findExtra(locked map[string]string) ([]string, error) {
+	expected, err := e.declaredContracts()
+	if err != nil {
+		return nil, err
+	}
+	var extra []string
+	seen := make(map[string]struct{})
+	for _, rel := range expected {
+		rel = filepath.ToSlash(rel)
+		if _, ok := locked[rel]; ok {
+			continue
+		}
+		if _, dup := seen[rel]; dup {
+			continue
+		}
+		path := filepath.Join(e.Root, filepath.FromSlash(rel))
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				continue
+			}
+			return nil, fmt.Errorf("stat %s: %w", rel, statErr)
+		}
+		if info.IsDir() {
+			continue
+		}
+		seen[rel] = struct{}{}
+		extra = append(extra, rel)
+	}
+	sort.Strings(extra)
+	return extra, nil
+}
+
+func (e *Engine) declaredContracts() ([]string, error) {
+	cfg, err := tokens.Load(e.Root)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return cfg.ContractFiles, nil
 }
 
 func (e *Engine) hashFile(rel string) (string, error) {
