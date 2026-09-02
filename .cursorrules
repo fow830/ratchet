@@ -1,0 +1,19 @@
+# ratchet — Zero Architectural Regression (Anti-Drift)
+
+Module: github.com/fow830/ratchet
+
+## Absolute Guardrails
+1. Pure Go SSOT Only — no external DSLs (CUE, TypeSpec, TypeDB, Rego/OPA).
+2. NO Go .so plugins — use WebAssembly (wazero) if isolation is required.
+3. No academic formal-verifier translators (TLA+, Lean4). Validate with go/ast, PBT, testcontainers.
+4. Standard Go tooling only: go/ast, go/parser, go/token, golang.org/x/tools, cobra.
+
+## Layer Edges
+- delivery → domain, usecase
+- domain → (none; leaf)
+- usecase → domain
+
+## Agent Protocol
+- Prefer tests first; keep gofmt/go vet clean.
+- Run `ratchet check` before claiming architecture is green.
+- Do not manually edit locked contract files without regenerating and re-locking.

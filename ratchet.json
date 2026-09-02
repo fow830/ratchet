@@ -1,0 +1,22 @@
+{
+  "module": "github.com/fow830/ratchet",
+  "layers": {
+    "/delivery": "delivery",
+    "/domain": "domain",
+    "/usecase": "usecase"
+  },
+  "allowed_edges": {
+    "delivery": [
+      "usecase",
+      "domain"
+    ],
+    "domain": [],
+    "usecase": [
+      "domain"
+    ]
+  },
+  "contract_files": [
+    ".cursorrules",
+    "ratchet.go"
+  ]
+}

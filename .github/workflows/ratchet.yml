@@ -1,0 +1,27 @@
+name: ratchet
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build ratchet
+        run: go build -o bin/ratchet ./cmd/ratchet
+
+      - name: Architecture check
+        run: ./bin/ratchet check --format=llm
