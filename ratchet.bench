@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "name": "BenchmarkAllowed",
+      "ns_per_op": 9,
+      "bytes_per_op": 0,
+      "allocs_per_op": 0
+    },
+    {
+      "name": "BenchmarkLayerOf",
+      "ns_per_op": 138,
+      "bytes_per_op": 0,
+      "allocs_per_op": 0
+    }
+  ]
+}

@@ -28,7 +28,23 @@ builds:
       - amd64
       - arm64
     ignore:
-      # windows/arm64 still niche for this CLI; keep amd64-only on Windows.
+      - goos: windows
+        goarch: arm64
+  - id: tokensgen
+    main: ./cmd/tokensgen
+    binary: tokensgen
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
       - goos: windows
         goarch: arm64
 
@@ -55,6 +71,28 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
+
+sboms:
+  - artifacts: archive
+    ids:
+      - default
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_YES=true
+    certificate: '${artifact}.pem'
+    certificate-identity-regexp: '.*'
+    certificate-oidc-issuer-regexp: '.*'
+    artifacts: checksum
+    args:
+      - sign-blob
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - --yes
+      - --bundle=${artifact}.sigstore.json
+      - ${artifact}
+    signature: '${artifact}.sig'
 
 release:
   draft: false

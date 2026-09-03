@@ -19,11 +19,11 @@ import (
 const StatusCheckName = tokens.ToolName
 
 // DefaultBranch is the protected / CI target branch.
-const DefaultBranch = "main"
+const DefaultBranch = tokens.DefaultBranch
 
 // Workflow / GitHub identity tokens.
 const (
-	WorkflowDir     = ".github/workflows/"
+	WorkflowDir     = tokens.DirGitHub + "/workflows/"
 	WorkflowRel     = WorkflowDir + tokens.ToolName + ".yml"
 	GitHubHost      = "github.com"
 	GitHubSSHPrefix = "git@" + GitHubHost + ":"
@@ -33,11 +33,17 @@ const (
 
 // CI pin tokens (single place for workflow template + tests).
 const (
-	GoreleaserAction = "goreleaser/goreleaser-action@v6"
-	GoreleaserPin    = "~> v2.12"
-	GoreleaserDist   = "goreleaser"
-	CheckoutAction   = "actions/checkout@v4"
-	SetupGoAction    = "actions/setup-go@v5"
+	GoreleaserAction      = "goreleaser/goreleaser-action@v6"
+	GoreleaserPin         = "~> v2.12"
+	GoreleaserDist        = "goreleaser"
+	CheckoutAction        = "actions/checkout@v4"
+	SetupGoAction         = "actions/setup-go@v5"
+	UploadArtifactAction  = "actions/upload-artifact@v4"
+	UploadSARIFAction     = "github/codeql-action/upload-sarif@v3"
+	CosignInstallerAction = "sigstore/cosign-installer@v3"
+	CIRunnerOS            = "ubuntu-latest"
+	CIScheduleCron        = "0 3 * * *"
+	CIGoVersionMatrix     = "['1.24.x', '1.25.x', '1.26.x']"
 )
 
 // FileSystem abstracts disk writes for workflow generation tests.
@@ -117,7 +123,7 @@ func (c *Client) WriteWorkflow(root string) (string, error) {
 	return path, nil
 }
 
-// WorkflowYAML is the committed CI workflow template.
+// WorkflowYAML is the committed superproduction CI workflow template.
 func WorkflowYAML() string {
 	return fmt.Sprintf(`name: %s
 
@@ -127,20 +133,31 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [%s]
+  schedule:
+    - cron: '%s'
 
 jobs:
   check:
     name: %s
-    runs-on: ubuntu-latest
+    runs-on: %s
+    strategy:
+      matrix:
+        go-version: %s
     steps:
       - uses: %s
 
       - uses: %s
         with:
-          go-version-file: %s
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Install analysis tools
+        run: |
+          go install %s
+          go install %s
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -count=1
 
       - name: Vet
         run: go vet ./...
@@ -148,16 +165,56 @@ jobs:
       - name: Build %s
         run: go build -o %s ./%s
 
-      - name: Architecture check
-        run: ./%s check --format=%s
+      - name: Architecture check (strict)
+        run: ./%s check --profile=%s --format=%s
+
+      - name: SARIF
+        run: ./%s check --profile=%s --format=%s > %s.sarif
+
+      - name: Validate SARIF
+        run: ./%s validate-sarif %s.sarif
+
+      - name: Upload SARIF
+        uses: %s
+        with:
+          sarif_file: %s.sarif
+        continue-on-error: true
+        # Upload needs GitHub Advanced Security / security-events; generation+validate are hard gates.
+
+      - name: CPU profile artifact
+        run: go test ./%s -cpuprofile=%s -count=1
+
+      - uses: %s
+        with:
+          name: pprof-${{ matrix.go-version }}
+          path: %s
+          if-no-files-found: error
+
+  nightly-paranoid:
+    name: nightly-paranoid
+    if: github.event_name == 'schedule'
+    runs-on: %s
+    steps:
+      - uses: %s
+      - uses: %s
+        with:
+          go-version-file: %s
+      - run: |
+          go install %s
+          go install %s
+      - run: go test ./... -race -count=1
+      - run: go build -o %s ./%s
+      - run: ./%s check --profile=%s --format=%s
+      - run: ./%s observe --format=%s
 
   release:
     name: release
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: %s
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: %s
         with:
@@ -168,10 +225,12 @@ jobs:
           go-version-file: %s
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -race -count=1
 
       - name: Vet
         run: go vet ./...
+
+      - uses: %s
 
       - uses: %s
         with:
@@ -180,11 +239,24 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-`, StatusCheckName, DefaultBranch, DefaultBranch, StatusCheckName,
-		CheckoutAction, SetupGoAction, tokens.GoModFileName,
+          COSIGN_YES: "true"
+`, StatusCheckName, DefaultBranch, DefaultBranch, CIScheduleCron,
+		StatusCheckName, CIRunnerOS, CIGoVersionMatrix,
+		CheckoutAction, SetupGoAction,
+		tokens.InstallStaticcheck, tokens.InstallGovulncheck,
 		tokens.ToolName, tokens.BinaryRel, tokens.CmdRel,
-		tokens.BinaryRel, report.FormatLLM,
-		CheckoutAction, SetupGoAction, tokens.GoModFileName,
+		tokens.BinaryRel, tokens.ProfileStrict, report.FormatLLM,
+		tokens.BinaryRel, tokens.ProfileStandard, report.FormatSARIF, tokens.ToolName,
+		tokens.BinaryRel, tokens.ToolName,
+		UploadSARIFAction, tokens.ToolName,
+		tokens.FitnessPkgRel, tokens.CPUProfileFile,
+		UploadArtifactAction, tokens.CPUProfileFile,
+		CIRunnerOS, CheckoutAction, SetupGoAction, tokens.GoModFileName,
+		tokens.InstallStaticcheck, tokens.InstallGovulncheck,
+		tokens.BinaryRel, tokens.CmdRel,
+		tokens.BinaryRel, tokens.ProfileParanoid, report.FormatLLM, tokens.BinaryRel, report.FormatJSON,
+		CIRunnerOS, CheckoutAction, SetupGoAction, tokens.GoModFileName,
+		CosignInstallerAction,
 		GoreleaserAction, GoreleaserDist, GoreleaserPin)
 }
 

@@ -1,22 +1,26 @@
 {
+  "schema_version": 2,
   "module": "github.com/fow830/ratchet",
+  "profile": "standard",
   "layers": {
     "/delivery": "delivery",
     "/domain": "domain",
     "/usecase": "usecase"
   },
   "allowed_edges": {
-    "delivery": [
-      "usecase",
-      "domain"
-    ],
+    "delivery": ["usecase", "domain"],
     "domain": [],
-    "usecase": [
-      "domain"
-    ]
+    "usecase": ["domain"]
   },
-  "contract_files": [
-    ".cursorrules",
-    "ratchet.json"
-  ]
+  "forbidden_edges": [
+    {"from": "domain", "to": "delivery"},
+    {"from": "domain", "to": "usecase"}
+  ],
+  "contract_files": [".cursorrules", "ratchet.json"],
+  "allowed_prose_docs": ["README.md"],
+  "contracts_dir": "tests/contracts",
+  "quality": {
+    "coverage_min_pct": 0,
+    "mutation_min_pct": 0
+  }
 }

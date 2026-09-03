@@ -66,6 +66,8 @@ type Engine struct {
 	FS FileSystem
 	// ConfigPath optional absolute/relative path to ratchet.json; empty uses Root default.
 	ConfigPath string
+	// Renderers maps "package.Func" to in-process render callbacks.
+	Renderers map[string]RenderFunc
 }
 
 // New creates an Engine rooted at dir.

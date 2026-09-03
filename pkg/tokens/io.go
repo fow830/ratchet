@@ -31,6 +31,10 @@ func LoadFile(ctx context.Context, path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
+	cfg, err = Migrate(cfg)
+	if err != nil {
+		return Config{}, fmt.Errorf("migrate %s: %w", filepath.Base(path), err)
+	}
 	return cfg, nil
 }
 

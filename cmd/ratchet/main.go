@@ -13,7 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/fow830/ratchet/pkg/antidrift"
-	"github.com/fow830/ratchet/pkg/fitness"
+	"github.com/fow830/ratchet/pkg/contracts"
+	"github.com/fow830/ratchet/pkg/generate"
 	gha "github.com/fow830/ratchet/pkg/github"
 	"github.com/fow830/ratchet/pkg/hooks"
 	"github.com/fow830/ratchet/pkg/report"
@@ -79,6 +80,8 @@ Exit codes:
 		newInitCICmd(&rf),
 		newInitHooksCmd(&rf),
 	)
+	registerExtraCommands(root, &rf)
+	root.AddCommand(newCompletionCmd())
 	return root
 }
 
@@ -87,12 +90,15 @@ func toolMsg(cmd, msg string) string {
 }
 
 func newInitCmd(rf *rootFlags) *cobra.Command {
-	return &cobra.Command{
+	var preset, profile string
+	var withContracts bool
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: fmt.Sprintf("Bootstrap %s, %s, Claude skill, and lock file", tokens.CursorRules, tokens.ConfigFileName),
 		Long: fmt.Sprintf(`Create default SSOT config and agent rule artifacts in the current module.
 
 Writes %s, %s, %s, and %s.
+Use --preset=clean|vitek|hex and --with-contracts for superproduction scaffold.
 Use --dry-run to preview without writing.`,
 			tokens.ConfigFileName, tokens.CursorRules, tokens.ClaudeSkillRel, tokens.LockFileName),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -106,11 +112,17 @@ Use --dry-run to preview without writing.`,
 			if err != nil {
 				return systemErr(err)
 			}
-			cfg := tokens.DefaultConfig(module)
+			cfg := tokens.PresetConfig(preset, module)
+			cfg.SchemaVersion = tokens.CurrentSchemaVersion
+			if profile != "" {
+				cfg.Profile = profile
+			} else {
+				cfg.Profile = tokens.ProfileStandard
+			}
 			if rf.dryRun {
 				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init (dry-run)", fmt.Sprintf(
-					"would write %s, %s, %s, %s",
-					tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName,
+					"would write %s, %s, %s, %s preset=%s profile=%s",
+					tokens.CursorRules, tokens.ConfigFileName, tokens.ClaudeSkillRel, tokens.LockFileName, preset, cfg.Profile,
 				)))
 				return nil
 			}
@@ -120,7 +132,17 @@ Use --dry-run to preview without writing.`,
 			if err := skills.NewGenerator(cfg).Generate(wd); err != nil {
 				return systemErr(err)
 			}
-			if err := antidrift.New(wd).Lock(ctx, cfg.ContractFiles); err != nil {
+			if withContracts {
+				dir := filepath.Join(wd, cfg.ContractsRoot())
+				if _, err := contracts.ScaffoldSuite(dir); err != nil {
+					return systemErr(err)
+				}
+				_, err := contracts.Scaffold(wd, contracts.ScaffoldOpts{ID: "ARCH-001", Title: "Architecture layer isolation"})
+				if err != nil {
+					return systemErr(err)
+				}
+			}
+			if err := antidrift.New(wd).LockAll(ctx, cfg); err != nil {
 				return systemErr(err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init", fmt.Sprintf(
@@ -130,14 +152,22 @@ Use --dry-run to preview without writing.`,
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&preset, "preset", tokens.PresetClean, "architecture preset: clean|vitek|hex")
+	cmd.Flags().StringVar(&profile, "profile", tokens.ProfileStandard, "default check profile")
+	cmd.Flags().BoolVar(&withContracts, "with-contracts", false, "scaffold "+tokens.ContractsDirDefault)
+	return cmd
 }
 
 func newCheckCmd(rf *rootFlags) *cobra.Command {
-	var format string
+	var format, profile string
+	var workspaceMode bool
 	cmd := &cobra.Command{
 		Use:   "check",
-		Short: "Run AST fitness functions and anti-drift checks",
-		Long: fmt.Sprintf(`Analyze Go packages for illegal layer imports and verify locked contract hashes.
+		Short: "Run profile-based architecture and quality gates",
+		Long: fmt.Sprintf(`Analyze Go packages for illegal layer imports, contract drift, and profile gates.
+
+Profiles (--profile):
+  %s, %s, %s, %s, %s, %s
 
 Output formats (--format / -f):
   %s   ANSI-colored terminal output (default; alias: %s)
@@ -146,92 +176,22 @@ Output formats (--format / -f):
   %s    dry RULE_VIOLATION blocks for agents
 
 Exit 1 when violations or drift are found; exit 2 on system/parse errors.`,
+			tokens.ProfileMinimal, tokens.ProfileStandard, tokens.ProfileService, tokens.ProfileAPI, tokens.ProfileStrict, tokens.ProfileParanoid,
 			report.FormatText, report.FormatHuman, report.FormatJSON, report.FormatSARIF, report.FormatLLM),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := commandContext()
-			defer cancel()
-
 			if rf.jsonOut {
 				format = report.FormatJSON
 			}
-			format, err := report.NormalizeFormat(format)
+			nfmt, err := report.NormalizeFormat(format)
 			if err != nil {
 				return systemErr(err)
 			}
-
-			wd, err := os.Getwd()
-			if err != nil {
-				return systemErr(err)
-			}
-			cfg, cfgPath, err := loadConfig(ctx, wd, rf.config)
-			if err != nil {
-				return systemErr(err)
-			}
-			if rf.verbose {
-				fmt.Fprintf(cmd.ErrOrStderr(), "config=%s module=%s format=%s\n", cfgPath, cfg.Module, format)
-			}
-
-			violations, err := fitness.NewAnalyzer(cfg).Analyze(ctx, wd)
-			if err != nil {
-				return systemErr(err)
-			}
-
-			eng := antidrift.New(wd)
-			eng.ConfigPath = cfgPath
-			diff, err := eng.Verify(ctx)
-			if err != nil {
-				return systemErr(err)
-			}
-
-			result := report.Result{
-				OK:         len(violations) == 0 && diff.OK(),
-				Violations: violations,
-				Drift:      diff,
-			}
-			result.Normalize()
-			errOut := cmd.ErrOrStderr()
-			out := cmd.OutOrStdout()
-
-			switch format {
-			case report.FormatJSON:
-				data, err := report.MarshalJSON(result)
-				if err != nil {
-					return systemErr(err)
-				}
-				fmt.Fprintln(out, string(data))
-			case report.FormatSARIF:
-				data, err := report.MarshalSARIF(result)
-				if err != nil {
-					return systemErr(err)
-				}
-				fmt.Fprintln(out, string(data))
-			case report.FormatLLM:
-				for _, v := range result.Violations {
-					fmt.Fprintln(errOut, report.FormatLLMViolation(v))
-					fmt.Fprintln(errOut)
-				}
-				if !result.Drift.OK() {
-					fmt.Fprintln(errOut, report.FormatLLMDiff(result.Drift))
-				}
-			default: // text
-				for _, v := range result.Violations {
-					fmt.Fprintln(errOut, report.FormatTextViolation(v))
-				}
-				if !result.Drift.OK() {
-					fmt.Fprint(errOut, report.FormatTextDiff(result.Drift))
-				}
-			}
-
-			if !result.OK {
-				return violationErr(fmt.Errorf("%s check failed", tokens.ToolName))
-			}
-			if format == report.FormatText || format == report.FormatLLM {
-				fmt.Fprintln(out, toolMsg("check", "ok"))
-			}
-			return nil
+			return runCheck(cmd, rf, nfmt, profile, workspaceMode)
 		},
 	}
 	cmd.Flags().StringVarP(&format, "format", "f", report.FormatText, "output format: "+report.SupportedFormats)
+	cmd.Flags().StringVar(&profile, "profile", "", "gate profile (overrides ratchet.json profile)")
+	cmd.Flags().BoolVar(&workspaceMode, "workspace", false, "check all modules in go.work monorepo")
 	return cmd
 }
 
@@ -271,10 +231,13 @@ Use --dry-run to preview without writing.`,
 			if err := skills.NewGenerator(cfg).Generate(wd); err != nil {
 				return systemErr(err)
 			}
-			if err := antidrift.New(wd).Lock(ctx, cfg.ContractFiles); err != nil {
+			if _, err := generate.WriteAll(ctx, wd, cfg); err != nil {
 				return systemErr(err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("gen", "regenerated contracts and lock file"))
+			if err := antidrift.New(wd).LockAll(ctx, cfg); err != nil {
+				return systemErr(err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("gen", "regenerated contracts, tokens, and lock file"))
 			return nil
 		},
 	}
@@ -347,7 +310,8 @@ func enableProtectMain(cmd *cobra.Command, wd string) error {
 }
 
 func newInitHooksCmd(rf *rootFlags) *cobra.Command {
-	return &cobra.Command{
+	var lrtVerify bool
+	cmd := &cobra.Command{
 		Use:   "init-hooks",
 		Short: "Install local pre-commit hook (soft friction)",
 		Long: fmt.Sprintf(`Install %s that runs %s check --format=%s.
@@ -363,7 +327,7 @@ This is soft friction only; CI exit code 1 remains the hard constraint.`,
 				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-hooks (dry-run)", "would install "+tokens.PreCommitRel))
 				return nil
 			}
-			path, err := hooks.Install(wd)
+			path, err := hooks.NewInstaller().Install(wd, hooks.InstallOptions{LRTVerify: lrtVerify})
 			if err != nil {
 				return systemErr(err)
 			}
@@ -371,6 +335,8 @@ This is soft friction only; CI exit code 1 remains the hard constraint.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&lrtVerify, "lrt-verify", false, "require LRT-VERIFY in commit message when contracts change")
+	return cmd
 }
 
 func loadConfig(ctx context.Context, wd, configFlag string) (tokens.Config, string, error) {

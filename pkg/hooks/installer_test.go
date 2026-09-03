@@ -47,6 +47,24 @@ func TestInstall_WritesPreCommit(t *testing.T) {
 	}
 }
 
+func TestInstall_LRTCommitMsg(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, tokens.GitDir, "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := hooks.NewInstaller().Install(root, hooks.InstallOptions{LRTVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tokens.CommitMsgRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "LRT-VERIFY") {
+		t.Fatalf("missing LRT: %s", data)
+	}
+}
+
 func TestInstall_RequiresGitDir(t *testing.T) {
 	root := t.TempDir()
 	if _, err := hooks.Install(root); err == nil {
@@ -62,7 +80,7 @@ func TestInstall_UsesMockFS(t *testing.T) {
 		files: map[string][]byte{},
 	}
 	inst := &hooks.Installer{FS: mem}
-	path, err := inst.Install("/repo")
+	path, err := inst.Install("/repo", hooks.InstallOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +105,7 @@ func (m *memFS) Stat(name string) (fs.FileInfo, error) {
 	return info, nil
 }
 
-func (m *memFS) MkdirAll(path string, _ fs.FileMode) error {
-	return nil
-}
+func (m *memFS) MkdirAll(path string, _ fs.FileMode) error { return nil }
 
 func (m *memFS) WriteFile(name string, data []byte, _ fs.FileMode) error {
 	m.files[name] = append([]byte(nil), data...)

@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/fow830/ratchet/pkg/antidrift"
+	"github.com/fow830/ratchet/pkg/docs"
 	"github.com/fow830/ratchet/pkg/fitness"
+	"github.com/fow830/ratchet/pkg/gates"
 	"github.com/fow830/ratchet/pkg/tokens"
 )
 
@@ -20,6 +22,8 @@ const (
 
 	RuleLayerIsolation = "LayerIsolation"
 	RuleAntiDrift      = "AntiDrift"
+	RuleDocsPolicy     = "DocsPolicy"
+	RuleGateFailure    = "GateFailure"
 )
 
 // SupportedFormats is the canonical help string for --format.
@@ -101,31 +105,32 @@ func FormatPlainDiff(d antidrift.Diff) string {
 	return d.String()
 }
 
-// FormatLLMViolation returns a dry, structured block for LLM agents.
+// FormatLLMViolation returns a dry, structured block for LLM agents (v2: includes COMMAND).
 func FormatLLMViolation(v fitness.Violation) string {
 	file := v.File
 	if v.Line > 0 {
 		file = fmt.Sprintf("%s:%d", v.File, v.Line)
 	}
-	return llmBlock(
-		RuleLayerIsolation,
-		file,
-		fmt.Sprintf(
+	return strings.Join([]string{
+		"RULE_VIOLATION: " + RuleLayerIsolation,
+		"FILE: " + file,
+		"DETAILS: " + fmt.Sprintf(
 			"package %q (layer %q) imports %q (layer %q); edge is forbidden",
 			v.ImporterPkg, v.ImporterLayer, v.ImportPath, v.ImportedLayer,
 		),
-		fmt.Sprintf(
+		"ACTION_REQUIRED: " + fmt.Sprintf(
 			"Remove import %q from %s, or move the dependency so layer %q only depends on allowed layers.",
 			v.ImportPath, v.File, v.ImporterLayer,
 		),
-	)
+		"COMMAND: " + tokens.ToolName + " check --format=" + FormatLLM,
+	}, "\n")
 }
 
 // FormatLLMDiff returns one LLM block per drifted/missing/extra contract file.
 func FormatLLMDiff(d antidrift.Diff) string {
 	var blocks []string
 	for _, c := range d.Changed {
-		blocks = append(blocks, llmBlock(
+		blocks = append(blocks, llmBlockCmd(
 			RuleAntiDrift,
 			c.Path,
 			fmt.Sprintf("contract hash mismatch expected=%s actual=%s", c.Expected, c.Actual),
@@ -133,18 +138,20 @@ func FormatLLMDiff(d antidrift.Diff) string {
 				"Restore generated content or run `%s gen` then commit the updated %s.",
 				tokens.ToolName, tokens.LockFileName,
 			),
+			tokens.ToolName+" gen",
 		))
 	}
 	for _, m := range d.Missing {
-		blocks = append(blocks, llmBlock(
+		blocks = append(blocks, llmBlockCmd(
 			RuleAntiDrift,
 			m,
 			"locked contract file is missing on disk",
 			fmt.Sprintf("Restore the file or run `%s gen` to regenerate contracts and lock.", tokens.ToolName),
+			tokens.ToolName+" gen",
 		))
 	}
 	for _, e := range d.Extra {
-		blocks = append(blocks, llmBlock(
+		blocks = append(blocks, llmBlockCmd(
 			RuleAntiDrift,
 			e,
 			fmt.Sprintf("declared contract file exists on disk but is absent from %s", tokens.LockFileName),
@@ -152,9 +159,30 @@ func FormatLLMDiff(d antidrift.Diff) string {
 				"Run `%s gen` to lock it, or remove it from ContractFiles in %s.",
 				tokens.ToolName, tokens.ConfigFileName,
 			),
+			tokens.ToolName+" lock",
 		))
 	}
 	return strings.Join(blocks, "\n\n")
+}
+
+// FormatLLMDocs returns an LLM block for docs policy violations.
+func FormatLLMDocs(v docs.Violation) string {
+	return llmBlock(
+		RuleDocsPolicy,
+		v.Path,
+		v.String(),
+		fmt.Sprintf("Remove %s or add it to allowed_prose_docs in %s.", v.Path, tokens.ConfigFileName),
+	)
+}
+
+// FormatLLMFailure returns an LLM block for gate failures.
+func FormatLLMFailure(f gates.Failure) string {
+	return llmBlock(
+		RuleGateFailure,
+		f.Gate,
+		f.Message,
+		fmt.Sprintf("Fix gate %q failure or adjust profile/gates in %s.", f.Gate, tokens.ConfigFileName),
+	)
 }
 
 // MarshalJSON marshals Result as indented JSON.
@@ -164,11 +192,16 @@ func MarshalJSON(r Result) ([]byte, error) {
 }
 
 func llmBlock(rule, file, details, action string) string {
+	return llmBlockCmd(rule, file, details, action, tokens.ToolName+" check --format="+FormatLLM)
+}
+
+func llmBlockCmd(rule, file, details, action, command string) string {
 	return strings.Join([]string{
 		"RULE_VIOLATION: " + rule,
 		"FILE: " + file,
 		"DETAILS: " + details,
 		"ACTION_REQUIRED: " + action,
+		"COMMAND: " + command,
 	}, "\n")
 }
 

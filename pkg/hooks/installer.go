@@ -2,16 +2,21 @@
 package hooks
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/fow830/ratchet/pkg/report"
 	"github.com/fow830/ratchet/pkg/tokens"
 )
 
-const preCommitRel = tokens.PreCommitRel
+const (
+	preCommitRel = tokens.PreCommitRel
+	commitMsgRel = tokens.CommitMsgRel
+)
 
 // FileSystem abstracts disk IO for install tests.
 type FileSystem interface {
@@ -48,18 +53,23 @@ func (i *Installer) fs() FileSystem {
 	return OSFileSystem{}
 }
 
-// Install writes an executable pre-commit hook under root/.git/hooks.
-func Install(root string) (string, error) {
-	return NewInstaller().Install(root)
+// InstallOptions configures hook behavior.
+type InstallOptions struct {
+	LRTVerify bool
 }
 
 // Install writes an executable pre-commit hook under root/.git/hooks.
-func (i *Installer) Install(root string) (string, error) {
+func Install(root string) (string, error) {
+	return NewInstaller().Install(root, InstallOptions{})
+}
+
+// Install writes pre-commit and optionally commit-msg hooks.
+func (i *Installer) Install(root string, opts InstallOptions) (string, error) {
 	fsys := i.fs()
 	gitDir := filepath.Join(root, tokens.GitDir)
 	info, err := fsys.Stat(gitDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return "", fmt.Errorf("hooks: %s is not a git repository (%s missing)", root, tokens.GitDir)
 		}
 		return "", fmt.Errorf("hooks: stat %s: %w", tokens.GitDir, err)
@@ -75,6 +85,12 @@ func (i *Installer) Install(root string) (string, error) {
 	if err := fsys.WriteFile(path, []byte(preCommitScript()), tokens.FileModeExec); err != nil {
 		return "", fmt.Errorf("hooks: write pre-commit: %w", err)
 	}
+	if opts.LRTVerify {
+		cm := filepath.Join(root, filepath.FromSlash(commitMsgRel))
+		if err := fsys.WriteFile(cm, []byte(commitMsgScript()), tokens.FileModeExec); err != nil {
+			return "", fmt.Errorf("hooks: write commit-msg: %w", err)
+		}
+	}
 	return path, nil
 }
 
@@ -85,7 +101,6 @@ func preCommitScript() string {
 	return fmt.Sprintf(`#!/bin/sh
 # Installed by %[1]s init-hooks (soft friction; CI is the hard constraint).
 set -e
-
 if command -v %[1]s >/dev/null 2>&1; then
   %[1]s check --format=%[2]s
 elif [ -x ./%[3]s ]; then
@@ -100,4 +115,27 @@ else
   exit 1
 fi
 `, tool, format, bin, tokens.CmdRel, tokens.PreCommitRel)
+}
+
+func commitMsgScript() string {
+	pat := fmt.Sprintf(`(^|/)(%s|%s|%s/|%s$)`,
+		regexp.QuoteMeta(tokens.ConfigFileName),
+		regexp.QuoteMeta(tokens.LockFileName),
+		regexp.QuoteMeta(tokens.ContractsDirDefault),
+		regexp.QuoteMeta(tokens.CursorRules),
+	)
+	return fmt.Sprintf(`#!/bin/sh
+# LRT-VERIFY: require marker when staged contract files change.
+set -e
+MSG_FILE="$1"
+if git diff --cached --name-only | grep -Eq '%s'; then
+  if ! grep -q 'LRT-VERIFY' "$MSG_FILE"; then
+    echo "RULE_VIOLATION: LRTVerify"
+    echo "FILE: commit-msg"
+    echo "DETAILS: contract files staged but commit message lacks LRT-VERIFY"
+    echo "ACTION_REQUIRED: Add a line containing LRT-VERIFY to the commit message"
+    exit 1
+  fi
+fi
+`, pat)
 }

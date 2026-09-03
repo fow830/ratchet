@@ -6,20 +6,31 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
 
 jobs:
   check:
     name: ratchet
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.24.x', '1.25.x', '1.26.x']
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Install analysis tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -count=1
 
       - name: Vet
         run: go vet ./...
@@ -27,8 +38,47 @@ jobs:
       - name: Build ratchet
         run: go build -o bin/ratchet ./cmd/ratchet
 
-      - name: Architecture check
-        run: ./bin/ratchet check --format=llm
+      - name: Architecture check (strict)
+        run: ./bin/ratchet check --profile=strict --format=llm
+
+      - name: SARIF
+        run: ./bin/ratchet check --profile=standard --format=sarif > ratchet.sarif
+
+      - name: Validate SARIF
+        run: ./bin/ratchet validate-sarif ratchet.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ratchet.sarif
+        continue-on-error: true
+        # Upload needs GitHub Advanced Security / security-events; generation+validate are hard gates.
+
+      - name: CPU profile artifact
+        run: go test ./pkg/fitness -cpuprofile=cpu.pprof -count=1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pprof-${{ matrix.go-version }}
+          path: cpu.pprof
+          if-no-files-found: error
+
+  nightly-paranoid:
+    name: nightly-paranoid
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: go test ./... -race -count=1
+      - run: go build -o bin/ratchet ./cmd/ratchet
+      - run: ./bin/ratchet check --profile=paranoid --format=llm
+      - run: ./bin/ratchet observe --format=json
 
   release:
     name: release
@@ -37,6 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,10 +98,12 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -race -count=1
 
       - name: Vet
         run: go vet ./...
+
+      - uses: sigstore/cosign-installer@v3
 
       - uses: goreleaser/goreleaser-action@v6
         with:
@@ -59,3 +112,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_YES: "true"

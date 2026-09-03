@@ -39,8 +39,17 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 		"go vet ./...",
 		gha.GoreleaserAction,
 		gha.GoreleaserPin,
-		tokens.ToolName + " check --format=" + report.FormatLLM,
+		tokens.ToolName + " check --profile=" + tokens.ProfileStrict + " --format=" + report.FormatLLM,
 		tokens.BinaryRel,
+		gha.CosignInstallerAction,
+		gha.UploadArtifactAction,
+		gha.UploadSARIFAction,
+		gha.CIRunnerOS,
+		gha.CIScheduleCron,
+		tokens.InstallStaticcheck,
+		tokens.InstallGovulncheck,
+		tokens.FitnessPkgRel,
+		"observe --format=" + report.FormatJSON,
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("workflow missing %q:\n%s", needle, body)

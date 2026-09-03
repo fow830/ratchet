@@ -1,0 +1,69 @@
+{
+  "module": "example.com/ratchet-service",
+  "preset": "vitek",
+  "profile": "service",
+  "layers": {
+    "/domain": "domain",
+    "/repository": "repository",
+    "/service": "service",
+    "/transport": "transport"
+  },
+  "allowed_edges": {
+    "domain": [],
+    "repository": [
+      "domain"
+    ],
+    "service": [
+      "repository",
+      "domain"
+    ],
+    "transport": [
+      "service",
+      "domain"
+    ]
+  },
+  "forbidden_edges": [
+    {
+      "from": "transport",
+      "to": "repository"
+    },
+    {
+      "from": "domain",
+      "to": "transport"
+    },
+    {
+      "from": "domain",
+      "to": "service"
+    },
+    {
+      "from": "domain",
+      "to": "repository"
+    }
+  ],
+  "boundary_rules": [
+    {
+      "importer_glob": "**/internal/domain/**",
+      "import_glob": "**/internal/transport/**"
+    }
+  ],
+  "layer_paths": [
+    "internal/transport",
+    "internal/service",
+    "internal/repository",
+    "internal/domain"
+  ],
+  "contract_files": [
+    ".cursorrules",
+    "ratchet.json"
+  ],
+  "allowed_prose_docs": [
+    "README.md",
+    "DEPLOY.md"
+  ],
+  "contracts_dir": "tests/contracts",
+  "quality": {},
+  "codegen": {
+    "sqlc_path": "sqlc.yaml",
+    "tokens_gen_cmd": "go run ./cmd/tokensgen"
+  }
+}

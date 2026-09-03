@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/fow830/ratchet/schema/ratchet.schema.json",
+  "title": "ratchet.json",
+  "type": "object",
+  "required": ["module", "layers", "allowed_edges", "contract_files"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "module": {"type": "string", "minLength": 1},
+    "preset": {"type": "string", "enum": ["clean", "vitek", "hex", ""]},
+    "profile": {"type": "string", "enum": ["minimal", "standard", "service", "api", "strict", "paranoid"]},
+    "layers": {"type": "object", "additionalProperties": {"type": "string"}},
+    "allowed_edges": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "forbidden_edges": {
+      "type": "array",
+      "items": {"type": "object", "required": ["from", "to"], "properties": {"from": {"type": "string"}, "to": {"type": "string"}}}
+    },
+    "test_forbidden_edges": {
+      "type": "array",
+      "items": {"type": "object", "required": ["from", "to"], "properties": {"from": {"type": "string"}, "to": {"type": "string"}}}
+    },
+    "boundary_rules": {
+      "type": "array",
+      "items": {"type": "object", "required": ["importer_glob", "import_glob"], "properties": {
+        "importer_glob": {"type": "string"},
+        "import_glob": {"type": "string"}
+      }}
+    },
+    "layer_paths": {"type": "array", "items": {"type": "string"}},
+    "allowed_modules": {"type": "array", "items": {"type": "string"}},
+    "allowed_external_imports": {"type": "array", "items": {"type": "string"}},
+    "testcontainers_tags": {"type": "array", "items": {"type": "string"}},
+    "zero_alloc_benches": {"type": "array", "items": {"type": "string"}},
+    "contract_files": {"type": "array", "items": {"type": "string"}},
+    "contract_locks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"},
+          "mode": {"type": "string", "enum": ["sha", "render", ""]},
+          "render_package": {"type": "string"},
+          "render_func": {"type": "string"}
+        }
+      }
+    },
+    "allowed_prose_docs": {"type": "array", "items": {"type": "string"}},
+    "contracts_dir": {"type": "string"},
+    "plugins": {
+      "type": "array",
+      "items": {"type": "object", "required": ["path"], "properties": {
+        "path": {"type": "string"},
+        "name": {"type": "string"}
+      }}
+    },
+    "gates": {"type": "object"},
+    "quality": {
+      "type": "object",
+      "properties": {
+        "mutation_min_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "coverage_min_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "bench_baseline": {"type": "string"}
+      }
+    },
+    "workspace_modules": {"type": "array"},
+    "codegen": {
+      "type": "object",
+      "properties": {
+        "sqlc_path": {"type": "string"},
+        "buf_path": {"type": "string"},
+        "openapi_path": {"type": "string"},
+        "cue_path": {"type": "string"},
+        "tokens_gen_cmd": {"type": "string"}
+      }
+    }
+  },
+  "additionalProperties": false
+}

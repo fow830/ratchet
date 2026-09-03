@@ -1,6 +1,11 @@
 /bin/
 /dist/
+/generated/
+.env.example
 *.exe
 *.test
 *.out
+coverage.out
+cpu.pprof
+*.pprof
 .DS_Store
