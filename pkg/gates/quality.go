@@ -8,18 +8,22 @@ import (
 )
 
 var (
-	coverageRe = regexp.MustCompile(`coverage:\s+([0-9.]+)%`)
-	mutationRe = regexp.MustCompile(`(?i)Score:\s*([0-9.]+)%`)
+	coverageRe    = regexp.MustCompile(`coverage:\s+([0-9.]+)%`)
+	coverFuncRe   = regexp.MustCompile(`(?m)^total:\s+\(statements\)\s+([0-9.]+)%`)
+	mutationRe    = regexp.MustCompile(`(?i)Score:\s*([0-9.]+)%`)
 )
 
-// BenchEntry is a parsed benchmark with optional zero-alloc mark.
-type BenchEntry struct {
-	Name            string
-	AllocsPerOp     int64
-	MarkedZeroAlloc bool
+// ParseCoverFuncTotal reads the total line from `go tool cover -func` output.
+func ParseCoverFuncTotal(out string) (float64, error) {
+	m := coverFuncRe.FindStringSubmatch(out)
+	if len(m) != 2 {
+		return 0, fmt.Errorf("no cover -func total found")
+	}
+	return strconv.ParseFloat(m[1], 64)
 }
 
 // ParseCoverageTotal averages coverage percentages from go test -cover output.
+// Prefer ParseCoverFuncTotal when a coverprofile is available.
 func ParseCoverageTotal(out string) (float64, error) {
 	matches := coverageRe.FindAllStringSubmatch(out, -1)
 	if len(matches) == 0 {
@@ -34,6 +38,13 @@ func ParseCoverageTotal(out string) (float64, error) {
 		sum += v
 	}
 	return sum / float64(len(matches)), nil
+}
+
+// BenchEntry is a parsed benchmark with optional zero-alloc mark.
+type BenchEntry struct {
+	Name            string
+	AllocsPerOp     int64
+	MarkedZeroAlloc bool
 }
 
 // ParseMutationScore extracts mutation score percent from go-mutesting output.

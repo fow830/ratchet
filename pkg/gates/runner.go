@@ -247,9 +247,16 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 	if g.Coverage {
-		out, err := runTool("coverage", "go", "test", "-coverprofile="+tokens.CoverageOutFile, "./...")
+		_, err := runTool("coverage", "go", "test", "-coverprofile="+tokens.CoverageOutFile, "./...")
 		if err == nil && opts.Config.Quality.CoverageMinPct > 0 {
-			pct, perr := ParseCoverageTotal(out)
+			coverOut, cerr := opts.Runner.Run(ctx, opts.Root, "go", "tool", "cover", "-func="+tokens.CoverageOutFile)
+			var pct float64
+			var perr error
+			if cerr == nil {
+				pct, perr = ParseCoverFuncTotal(coverOut)
+			} else {
+				perr = cerr
+			}
 			if perr != nil {
 				fail("coverage", perr.Error())
 			} else if pct < opts.Config.Quality.CoverageMinPct {
@@ -258,16 +265,32 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 	if g.SQLC && opts.Config.Codegen.SQLCPath != "" {
-		_, _ = runTool("sqlc", "sqlc", "diff")
+		if _, err := os.Stat(filepath.Join(opts.Root, opts.Config.Codegen.SQLCPath)); err != nil {
+			fail("sqlc", "missing "+opts.Config.Codegen.SQLCPath)
+		} else {
+			_, _ = runTool("sqlc", "sqlc", "diff")
+		}
 	}
 	if g.Buf && opts.Config.Codegen.BufPath != "" {
-		_, _ = runTool("buf", "buf", "breaking", "--against", tokens.BufAgainstGit())
+		if _, err := os.Stat(filepath.Join(opts.Root, opts.Config.Codegen.BufPath)); err != nil {
+			fail("buf", "missing "+opts.Config.Codegen.BufPath)
+		} else {
+			_, _ = runTool("buf", "buf", "breaking", "--against", tokens.BufAgainstGit())
+		}
 	}
 	if g.OpenAPI && opts.Config.Codegen.OpenAPIPath != "" {
-		_, _ = runTool("openapi", "oapi-codegen", "-generate", "types", opts.Config.Codegen.OpenAPIPath)
+		if _, err := os.Stat(filepath.Join(opts.Root, opts.Config.Codegen.OpenAPIPath)); err != nil {
+			fail("openapi", "missing "+opts.Config.Codegen.OpenAPIPath)
+		} else {
+			_, _ = runTool("openapi", "oapi-codegen", "-generate", "types", opts.Config.Codegen.OpenAPIPath)
+		}
 	}
 	if g.CUE && opts.Config.Codegen.CUEPath != "" {
-		_, _ = runTool("cue", "cue", "vet", opts.Config.Codegen.CUEPath)
+		if _, err := os.Stat(filepath.Join(opts.Root, opts.Config.Codegen.CUEPath)); err != nil {
+			fail("cue", "missing "+opts.Config.Codegen.CUEPath)
+		} else {
+			_, _ = runTool("cue", "cue", "vet", opts.Config.Codegen.CUEPath)
+		}
 	}
 	if g.WASM && len(opts.Config.Plugins) > 0 {
 		res.GatesRun = append(res.GatesRun, "wasm")

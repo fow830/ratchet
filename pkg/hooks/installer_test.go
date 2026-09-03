@@ -47,12 +47,15 @@ func TestInstall_WritesPreCommit(t *testing.T) {
 	}
 }
 
-func TestInstall_LRTCommitMsg(t *testing.T) {
+func TestInstall_LRTCommitMsgUsesContractsDir(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, tokens.GitDir, "hooks"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_, err := hooks.NewInstaller().Install(root, hooks.InstallOptions{LRTVerify: true})
+	_, err := hooks.NewInstaller().Install(root, hooks.InstallOptions{
+		LRTVerify:    true,
+		ContractsDir: "custom/contracts",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +63,12 @@ func TestInstall_LRTCommitMsg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "LRT-VERIFY") {
-		t.Fatalf("missing LRT: %s", data)
+	body := string(data)
+	if !strings.Contains(body, "custom/contracts/") {
+		t.Fatalf("missing custom contracts path: %s", body)
+	}
+	if strings.Contains(body, tokens.ContractsDirDefault+"/") && !strings.Contains(body, "custom/contracts/") {
+		t.Fatal("still using default only")
 	}
 }
 

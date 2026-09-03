@@ -321,6 +321,8 @@ func newInitHooksCmd(rf *rootFlags) *cobra.Command {
 This is soft friction only; CI exit code 1 remains the hard constraint.`,
 			tokens.PreCommitRel, tokens.ToolName, report.FormatLLM),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := commandContext()
+			defer cancel()
 			wd, err := os.Getwd()
 			if err != nil {
 				return systemErr(err)
@@ -329,7 +331,15 @@ This is soft friction only; CI exit code 1 remains the hard constraint.`,
 				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("init-hooks (dry-run)", "would install "+tokens.PreCommitRel))
 				return nil
 			}
-			path, err := hooks.NewInstaller().Install(wd, hooks.InstallOptions{LRTVerify: lrtVerify})
+			cfg, _, err := loadConfig(ctx, wd, rf.config)
+			cdir := tokens.ContractsDirDefault
+			if err == nil {
+				cdir = cfg.ContractsRoot()
+			}
+			path, err := hooks.NewInstaller().Install(wd, hooks.InstallOptions{
+				LRTVerify:    lrtVerify,
+				ContractsDir: cdir,
+			})
 			if err != nil {
 				return systemErr(err)
 			}

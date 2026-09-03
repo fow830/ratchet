@@ -5,4 +5,5 @@ const (
 	CheckNameConfigValidate = "config-validate"
 	CheckNameJSONSchema     = "json-schema"
 	CheckNameGit            = "git"
+	CheckNameWorkflow       = "workflow"
 )

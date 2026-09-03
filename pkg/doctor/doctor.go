@@ -1,8 +1,8 @@
-// Package doctor validates ratchet project setup.
 package doctor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +46,13 @@ func Run(ctx context.Context, root string, cfg tokens.Config, configPath string)
 	}
 	checks = append(checks, checkFile(configPath, tokens.ConfigFileName))
 	checks = append(checks, checkFile(filepath.Join(root, tokens.LockFileName), tokens.LockFileName))
-	checks = append(checks, checkFile(filepath.Join(root, gha.WorkflowRel), gha.WorkflowRel))
+
+	wfPath := filepath.Join(root, filepath.FromSlash(gha.WorkflowRel))
+	if _, err := os.Stat(wfPath); err != nil {
+		checks = append(checks, Check{Name: CheckNameWorkflow, OK: true, Details: "optional: not present"})
+	} else {
+		checks = append(checks, Check{Name: CheckNameWorkflow, OK: true})
+	}
 
 	if err := tokens.Validate(cfg); err != nil {
 		checks = append(checks, Check{Name: CheckNameConfigValidate, OK: false, Details: err.Error()})
@@ -54,12 +60,7 @@ func Run(ctx context.Context, root string, cfg tokens.Config, configPath string)
 		checks = append(checks, Check{Name: CheckNameConfigValidate, OK: true})
 	}
 
-	schemaPath := filepath.Join(root, filepath.FromSlash(tokens.SchemaRel))
-	if _, err := os.Stat(schemaPath); err != nil {
-		checks = append(checks, Check{Name: CheckNameJSONSchema, OK: true, Details: "optional: not present"})
-	} else {
-		checks = append(checks, Check{Name: CheckNameJSONSchema, OK: true})
-	}
+	checks = append(checks, checkSchema(root))
 
 	gitDir := filepath.Join(root, tokens.GitDir)
 	if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
@@ -69,6 +70,22 @@ func Run(ctx context.Context, root string, cfg tokens.Config, configPath string)
 	}
 
 	return Report{Checks: checks}, nil
+}
+
+func checkSchema(root string) Check {
+	schemaPath := filepath.Join(root, filepath.FromSlash(tokens.SchemaRel))
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return Check{Name: CheckNameJSONSchema, OK: true, Details: "optional: not present"}
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return Check{Name: CheckNameJSONSchema, OK: false, Details: "invalid json: " + err.Error()}
+	}
+	if raw["type"] == nil && raw["properties"] == nil && raw["$schema"] == nil {
+		return Check{Name: CheckNameJSONSchema, OK: false, Details: "schema missing type/properties/$schema"}
+	}
+	return Check{Name: CheckNameJSONSchema, OK: true}
 }
 
 func checkFile(path, name string) Check {

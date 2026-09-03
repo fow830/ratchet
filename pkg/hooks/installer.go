@@ -55,7 +55,8 @@ func (i *Installer) fs() FileSystem {
 
 // InstallOptions configures hook behavior.
 type InstallOptions struct {
-	LRTVerify bool
+	LRTVerify    bool
+	ContractsDir string // relative contracts path for LRT grep; empty = default
 }
 
 // Install writes an executable pre-commit hook under root/.git/hooks.
@@ -87,7 +88,11 @@ func (i *Installer) Install(root string, opts InstallOptions) (string, error) {
 	}
 	if opts.LRTVerify {
 		cm := filepath.Join(root, filepath.FromSlash(commitMsgRel))
-		if err := fsys.WriteFile(cm, []byte(commitMsgScript()), tokens.FileModeExec); err != nil {
+		cdir := opts.ContractsDir
+		if cdir == "" {
+			cdir = tokens.ContractsDirDefault
+		}
+		if err := fsys.WriteFile(cm, []byte(commitMsgScript(cdir)), tokens.FileModeExec); err != nil {
 			return "", fmt.Errorf("hooks: write commit-msg: %w", err)
 		}
 	}
@@ -117,11 +122,11 @@ fi
 `, tool, format, bin, tokens.CmdRel, tokens.PreCommitRel)
 }
 
-func commitMsgScript() string {
+func commitMsgScript(contractsDir string) string {
 	pat := fmt.Sprintf(`(^|/)(%s|%s|%s/|%s$)`,
 		regexp.QuoteMeta(tokens.ConfigFileName),
 		regexp.QuoteMeta(tokens.LockFileName),
-		regexp.QuoteMeta(tokens.ContractsDirDefault),
+		regexp.QuoteMeta(contractsDir),
 		regexp.QuoteMeta(tokens.CursorRules),
 	)
 	return fmt.Sprintf(`#!/bin/sh
