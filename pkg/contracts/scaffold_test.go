@@ -32,17 +32,25 @@ func TestScaffoldContract(t *testing.T) {
 	}
 }
 
-func TestScaffoldSuite(t *testing.T) {
+func TestScaffoldUsesCustomContractsDir(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "tests/contracts")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path, err := contracts.ScaffoldSuite(dir)
+	path, err := contracts.Scaffold(root, contracts.ScaffoldOpts{
+		ID:  "ARCH-002",
+		Title: "custom dir",
+		Dir: "custom/contracts",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal(err)
+	wantPrefix := filepath.Join(root, "custom", "contracts")
+	if filepath.Dir(path) != wantPrefix {
+		t.Fatalf("path=%s want under %s", path, wantPrefix)
+	}
+}
+
+func TestScaffoldRejectsEmptyID(t *testing.T) {
+	_, err := contracts.Scaffold(t.TempDir(), contracts.ScaffoldOpts{ID: "", Title: "x"})
+	if err == nil {
+		t.Fatal("expected error for empty ID")
 	}
 }

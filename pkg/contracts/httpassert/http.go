@@ -58,6 +58,9 @@ func NewTestServer(t *testing.T, h http.Handler) *httptest.Server {
 // AssertMethod fails when HTTP method differs.
 func AssertMethod(t *testing.T, r *http.Request, want string) {
 	t.Helper()
+	if r == nil {
+		t.Fatal("nil request")
+	}
 	if r.Method != want {
 		t.Fatalf("method: got %q want %q", r.Method, want)
 	}

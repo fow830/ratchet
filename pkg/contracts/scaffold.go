@@ -15,11 +15,17 @@ type ScaffoldOpts struct {
 	ID       string
 	Title    string
 	Negative bool
+	// Dir is the contracts directory relative to module root.
+	// Empty means tokens.ContractsDirDefault.
+	Dir string
 }
 
-// Scaffold writes <ContractsDirDefault>/<slug>_contract_test.go.
+// Scaffold writes <contractsDir>/<slug>_contract_test.go.
 func Scaffold(root string, opts ScaffoldOpts) (string, error) {
-	dir := filepath.Join(root, filepath.FromSlash(tokens.ContractsDirDefault))
+	if strings.TrimSpace(opts.ID) == "" {
+		return "", fmt.Errorf("contract ID is required")
+	}
+	dir := filepath.Join(root, filepath.FromSlash(contractsRel(opts.Dir)))
 	if err := os.MkdirAll(dir, tokens.FileModeDir); err != nil {
 		return "", err
 	}
@@ -93,7 +99,15 @@ func %s(t *testing.T) {
 `, comment, testName, msg)
 }
 
-// PackagePath returns the standard contracts directory relative to module root.
-func PackagePath(root string) string {
-	return filepath.Join(root, filepath.FromSlash(tokens.ContractsDirDefault))
+// PackagePath returns the contracts directory under module root.
+// Empty rel uses tokens.ContractsDirDefault.
+func PackagePath(root, rel string) string {
+	return filepath.Join(root, filepath.FromSlash(contractsRel(rel)))
+}
+
+func contractsRel(rel string) string {
+	if rel == "" {
+		return tokens.ContractsDirDefault
+	}
+	return rel
 }

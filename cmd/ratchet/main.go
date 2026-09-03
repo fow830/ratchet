@@ -137,7 +137,9 @@ Use --dry-run to preview without writing.`,
 				if _, err := contracts.ScaffoldSuite(dir); err != nil {
 					return systemErr(err)
 				}
-				_, err := contracts.Scaffold(wd, contracts.ScaffoldOpts{ID: "ARCH-001", Title: "Architecture layer isolation"})
+				_, err := contracts.Scaffold(wd, contracts.ScaffoldOpts{
+					ID: "ARCH-001", Title: "Architecture layer isolation", Dir: cfg.ContractsRoot(),
+				})
 				if err != nil {
 					return systemErr(err)
 				}
@@ -154,7 +156,7 @@ Use --dry-run to preview without writing.`,
 	}
 	cmd.Flags().StringVar(&preset, "preset", tokens.PresetClean, "architecture preset: clean|vitek|hex")
 	cmd.Flags().StringVar(&profile, "profile", tokens.ProfileStandard, "default check profile")
-	cmd.Flags().BoolVar(&withContracts, "with-contracts", false, "scaffold "+tokens.ContractsDirDefault)
+	cmd.Flags().BoolVar(&withContracts, "with-contracts", false, "scaffold contracts suite under contracts_dir")
 	return cmd
 }
 

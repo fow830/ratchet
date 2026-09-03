@@ -205,13 +205,20 @@ func newNewContractCmd(rf *rootFlags) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), toolMsg("new-contract (dry-run)", "would scaffold "+args[0]))
 				return nil
 			}
+			ctx, cancel := commandContext()
+			defer cancel()
+			cfg, _, err := loadConfig(ctx, wd, rf.config)
+			if err != nil {
+				return systemErr(err)
+			}
+			cdir := cfg.ContractsRoot()
 			path, err := contracts.Scaffold(wd, contracts.ScaffoldOpts{
-				ID: args[0], Title: title, Negative: negative,
+				ID: args[0], Title: title, Negative: negative, Dir: cdir,
 			})
 			if err != nil {
 				return systemErr(err)
 			}
-			_, _ = contracts.ScaffoldSuite(contracts.PackagePath(wd))
+			_, _ = contracts.ScaffoldSuite(contracts.PackagePath(wd, cdir))
 			fmt.Fprintln(cmd.OutOrStdout(), toolMsg("new-contract", "wrote "+path))
 			return nil
 		},
@@ -664,13 +671,15 @@ func scaffoldExampleService(root string) error {
 	if err := tokens.Save(ctx, dir, cfg); err != nil {
 		return err
 	}
-	contractsDir := filepath.Join(dir, filepath.FromSlash(tokens.ContractsDirDefault))
+	contractsDir := filepath.Join(dir, filepath.FromSlash(cfg.ContractsRoot()))
 	if err := os.MkdirAll(contractsDir, tokens.FileModeDir); err != nil {
 		return err
 	}
 	if _, err := contracts.ScaffoldSuite(contractsDir); err != nil {
 		return err
 	}
-	_, err := contracts.Scaffold(dir, contracts.ScaffoldOpts{ID: "ARCH-001", Title: "Layer isolation"})
+	_, err := contracts.Scaffold(dir, contracts.ScaffoldOpts{
+		ID: "ARCH-001", Title: "Layer isolation", Dir: cfg.ContractsRoot(),
+	})
 	return err
 }
