@@ -43,7 +43,6 @@ const (
 	CosignInstallerAction = "sigstore/cosign-installer@v3"
 	CIRunnerOS            = "ubuntu-latest"
 	CIScheduleCron        = "0 3 * * *"
-	CIGoVersionMatrix     = "['1.24.x', '1.25.x', '1.26.x']"
 )
 
 // FileSystem abstracts disk writes for workflow generation tests.
@@ -140,15 +139,12 @@ jobs:
   check:
     name: %s
     runs-on: %s
-    strategy:
-      matrix:
-        go-version: %s
     steps:
       - uses: %s
 
       - uses: %s
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: %s
           cache: true
 
       - name: Install analysis tools
@@ -186,7 +182,7 @@ jobs:
 
       - uses: %s
         with:
-          name: pprof-${{ matrix.go-version }}
+          name: pprof
           path: %s
           if-no-files-found: error
 
@@ -241,8 +237,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COSIGN_YES: "true"
 `, StatusCheckName, DefaultBranch, DefaultBranch, CIScheduleCron,
-		StatusCheckName, CIRunnerOS, CIGoVersionMatrix,
-		CheckoutAction, SetupGoAction,
+		StatusCheckName, CIRunnerOS,
+		CheckoutAction, SetupGoAction, tokens.GoModFileName,
 		tokens.InstallStaticcheck, tokens.InstallGovulncheck,
 		tokens.ToolName, tokens.BinaryRel, tokens.CmdRel,
 		tokens.BinaryRel, tokens.ProfileStrict, report.FormatLLM,

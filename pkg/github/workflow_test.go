@@ -49,6 +49,7 @@ func TestWriteWorkflow_CreatesRatchetYML(t *testing.T) {
 		tokens.InstallStaticcheck,
 		tokens.InstallGovulncheck,
 		tokens.FitnessPkgRel,
+		"go-version-file: " + tokens.GoModFileName,
 		"observe --format=" + report.FormatJSON,
 	} {
 		if !strings.Contains(body, needle) {
